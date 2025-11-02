@@ -1,0 +1,45 @@
+# Phase 2 Extension Blueprint
+version: 2.0
+phase: 2
+description: >
+  This blueprint defines the second phase of the Antika Auction Watcher system.
+  It extends the backend with AI-based valuation logic, improved bidding strategy,
+  and live pricing analysis modules.
+
+modules:
+  valuation_ai:
+    language: python
+    path: backend/services/valuation_ai
+    dependencies: [core, valuation_engine]
+    tasks:
+      - integrate external price data sources (eBay, Etsy, WorthPoint)
+      - implement AI-driven price normalization model
+      - generate safe buy/sell range dynamically
+
+  strategy_optimizer:
+    language: python
+    path: backend/services/optimizer
+    dependencies: [valuation_ai]
+    tasks:
+      - create StrategyAgent class
+      - implement reinforcement-learning-based bidding logic
+      - track profit/loss outcomes per auction session
+
+  notification_center:
+    language: python
+    path: backend/services/notifications
+    dependencies: [core, realtime]
+    tasks:
+      - build alert rules for undervalued items
+      - implement Telegram/Email/WebSocket notifications
+      - add cooldown and user preference system
+
+roadmap:
+  milestone_1: "Connect AI valuation model with bidding engine"
+  milestone_2: "Deploy optimizer for top 10 product categories"
+  milestone_3: "Integrate notification preferences into dashboard"
+
+status:
+  design: complete
+  implementation: pending
+  target_date: 2025-12-15
