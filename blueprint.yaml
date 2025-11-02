@@ -1,0 +1,114 @@
+# Antika Auction Watcher - Blueprint v1.0
+
+meta:
+  project_name: "Antika Auction Watcher"
+  description: "AI-powered Instagram live auction monitoring and auto-bidding system"
+  owner: "Mustafa Misirkafa"
+  version: "1.0"
+  status: "active"
+
+phases:
+  - name: Phase 1 - Core System (Weeks 1-6)
+    goals:
+      - Build backend foundation (FastAPI, PostgreSQL, Redis)
+      - Implement valuation engine (mock adapters)
+      - Implement semi-auto bidding engine
+      - Create real-time layer (Redis Pub/Sub + WebSocket)
+      - Build frontend MVP (Next.js dashboard)
+    deliverables:
+      - Backend API with authentication, valuation, and bidding endpoints
+      - Working valuation engine with mock data (eBay/Etsy)
+      - Live room dashboard connected to backend via WebSocket
+      - Docker Compose environment
+    dependencies: []
+    owner: backend
+
+  - name: Phase 2 - Real Integrations (Weeks 7-10)
+    goals:
+      - Integrate real marketplace APIs (eBay, Sahibinden, Etsy)
+      - Add analytics & learning loop
+      - Build admin dashboard
+    deliverables:
+      - Real valuation data from APIs
+      - Category-wise learning loop
+      - Admin panel for system health
+    dependencies: [Phase 1 - Core System]
+    owner: backend
+
+  - name: Phase 3 - Expansion (Weeks 11-16)
+    goals:
+      - Multi-platform support (TikTok, Facebook)
+      - Add auto-resale integration
+      - Mobile app (React Native)
+    deliverables:
+      - Full multi-platform monitoring
+      - Auto resale listing engine
+      - Mobile companion app
+    dependencies: [Phase 2 - Real Integrations]
+    owner: fullstack
+
+modules:
+  core:
+    language: python
+    framework: fastapi
+    database: postgresql
+    cache: redis
+    tasks:
+      - setup configuration and env
+      - implement auth routes (JWT)
+      - create base models with SQLModel
+      - add database migrations with Alembic
+
+  valuation_engine:
+    language: python
+    path: backend/services/valuation
+    dependencies: [core]
+    tasks:
+      - create mock adapters (eBay, Etsy)
+      - build ValuationEstimator class
+      - calculate target buy price and safe margin
+      - implement learning loop update from outcomes
+
+  bidding_engine:
+    language: python
+    path: backend/services/bidding
+    dependencies: [valuation_engine]
+    tasks:
+      - implement BiddingAgent class
+      - add decision rules (auto/semi-auto)
+      - connect to Instagram via Playwright
+      - add duplicate bid prevention logic
+
+  realtime_layer:
+    language: python
+    path: backend/realtime
+    dependencies: [core]
+    tasks:
+      - setup Redis Pub/Sub channels
+      - implement WebSocket manager
+      - broadcast valuation and bid events
+
+  frontend:
+    language: typescript
+    framework: next.js
+    path: frontend
+    dependencies: [core, valuation_engine, realtime_layer]
+    tasks:
+      - build dashboard pages
+      - implement valuation card component
+      - integrate WebSocket client hook
+      - add login/register pages
+
+rules:
+  coding_standards:
+    - use async I/O where possible
+    - no unused imports or dead code
+    - all API endpoints validated with Pydantic
+  security:
+    - JWT secret stored in .env only
+    - rate limit bidding routes
+    - encrypt Instagram credentials
+  quality_gates:
+    - pylint score >= 9.0
+    - test coverage >= 80%
+    - no failing tests before merge
