@@ -1,0 +1,764 @@
+# Antika Auction Watcher - Phase 2 Blueprint
+# Real Integrations & Analytics (Weeks 7-10)
+
+meta:
+  phase: "Phase 2"
+  title: "Real Integrations & Analytics"
+  duration: "4 weeks (Weeks 7-10)"
+  status: "planned"
+  owner: "backend"
+  dependencies: ["Phase 1 - Core System"]
+  version: "2.0"
+  
+# Phase 2 enforces stricter requirements per rules.yaml
+enforcement:
+  min_test_coverage: 80            # Up from 60% in Phase 1
+  allow_mock_data: false           # Must use real APIs
+  enforce_performance: true        # Performance monitoring required
+  strict_security: true            # All security rules enforced
+  rate_limiting: required          # Must implement rate limiting
+
+goals:
+  primary:
+    - "Replace mock adapters with real marketplace API integrations"
+    - "Implement comprehensive analytics and learning loop"
+    - "Build admin dashboard for system monitoring"
+    - "Add rate limiting to all external API calls"
+    - "Implement caching strategies for API responses"
+  
+  secondary:
+    - "Improve valuation accuracy with real data"
+    - "Track and analyze bid outcomes"
+    - "Monitor system health and performance"
+    - "Optimize database queries and indexes"
+    - "Document API usage and rate limits"
+
+deliverables:
+  backend:
+    - "Real eBay API integration with OAuth 2.0"
+    - "Real Etsy API integration with OAuth 2.0"
+    - "Sahibinden web scraper with rate limiting"
+    - "Analytics service for bid outcome tracking"
+    - "Learning loop service for margin optimization"
+    - "Admin API endpoints for monitoring"
+    - "Performance monitoring middleware"
+    - "Comprehensive rate limiting system"
+  
+  frontend:
+    - "Admin dashboard pages"
+    - "Analytics visualization components"
+    - "System health monitoring UI"
+    - "API usage tracking dashboard"
+  
+  infrastructure:
+    - "API credentials management system"
+    - "Redis caching layer for API responses"
+    - "Database query optimization"
+    - "Logging and monitoring setup"
+    - "Load testing configuration"
+
+modules:
+  # 1. Real API Integrations
+  marketplace_integrations:
+    path: backend/services/marketplace
+    language: python
+    priority: high
+    estimated_hours: 40
+    
+    components:
+      ebay_api:
+        file: backend/services/marketplace/ebay_client.py
+        description: "eBay Finding & Shopping API integration"
+        dependencies: [core, encryption]
+        max_lines: 400
+        
+        tasks:
+          - task: "Implement eBay OAuth 2.0 authentication"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Create eBay Finding API client"
+            estimate: "6h"
+            complexity: medium
+            tests_required: 8
+            
+          - task: "Create eBay Shopping API client"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Implement rate limiting wrapper"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add response caching with Redis"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+          
+          - task: "Handle API errors and retries"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+      
+      etsy_api:
+        file: backend/services/marketplace/etsy_client.py
+        description: "Etsy API v3 integration"
+        dependencies: [core, encryption]
+        max_lines: 350
+        
+        tasks:
+          - task: "Implement Etsy OAuth 2.0 authentication"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Create Etsy Listings API client"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 7
+            
+          - task: "Implement rate limiting wrapper"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add response caching with Redis"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Handle API errors and retries"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+      
+      sahibinden_scraper:
+        file: backend/services/marketplace/sahibinden_scraper.py
+        description: "Sahibinden web scraper with rate limiting"
+        dependencies: [core]
+        max_lines: 400
+        
+        tasks:
+          - task: "Implement BeautifulSoup scraper"
+            estimate: "6h"
+            complexity: medium
+            tests_required: 8
+            
+          - task: "Add rate limiting and request throttling"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Implement HTML parsing and data extraction"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 7
+            
+          - task: "Add caching layer for scraped data"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Handle errors and retries gracefully"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+      
+      adapter_factory:
+        file: backend/services/marketplace/adapter_factory.py
+        description: "Factory pattern for marketplace adapters"
+        dependencies: [ebay_api, etsy_api, sahibinden_scraper]
+        max_lines: 200
+        
+        tasks:
+          - task: "Create adapter factory with strategy pattern"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Implement adapter selection logic"
+            estimate: "2h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add adapter health checking"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+
+  # 2. Enhanced Valuation Engine
+  valuation_v2:
+    path: backend/services/valuation
+    language: python
+    priority: high
+    estimated_hours: 30
+    
+    components:
+      real_estimator:
+        file: backend/services/valuation/real_estimator.py
+        description: "Enhanced estimator using real API data"
+        dependencies: [marketplace_integrations]
+        max_lines: 350
+        
+        tasks:
+          - task: "Refactor estimator to use real adapters"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 8
+            
+          - task: "Implement weighted source scoring"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Add category-specific valuation logic"
+            estimate: "5h"
+            complexity: high
+            tests_required: 8
+            
+          - task: "Implement confidence score refinement"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Add caching for frequently valued items"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+      
+      valuation_cache:
+        file: backend/services/valuation/cache_manager.py
+        description: "Redis-based valuation caching"
+        dependencies: [realtime_layer]
+        max_lines: 250
+        
+        tasks:
+          - task: "Implement cache key generation"
+            estimate: "2h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add TTL-based cache invalidation"
+            estimate: "3h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Implement cache warming strategies"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+
+  # 3. Analytics & Learning Loop
+  analytics_service:
+    path: backend/services/analytics
+    language: python
+    priority: high
+    estimated_hours: 35
+    
+    components:
+      bid_outcome_tracker:
+        file: backend/services/analytics/outcome_tracker.py
+        description: "Track and analyze bid outcomes"
+        dependencies: [db, bidding_engine]
+        max_lines: 350
+        
+        tasks:
+          - task: "Create outcome tracking data models"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Implement outcome recording service"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 7
+            
+          - task: "Add profitability calculation"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Create outcome aggregation queries"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Add export functionality for analysis"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+      
+      learning_service:
+        file: backend/services/analytics/learning_service.py
+        description: "Machine learning for margin optimization"
+        dependencies: [outcome_tracker, valuation_v2]
+        max_lines: 400
+        
+        tasks:
+          - task: "Implement category-wise learning loop"
+            estimate: "6h"
+            complexity: high
+            tests_required: 8
+            
+          - task: "Add safety margin adjustment algorithm"
+            estimate: "5h"
+            complexity: high
+            tests_required: 7
+            
+          - task: "Create confidence score tuning"
+            estimate: "5h"
+            complexity: high
+            tests_required: 7
+            
+          - task: "Implement periodic retraining scheduler"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Add model performance metrics"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+      
+      metrics_collector:
+        file: backend/services/analytics/metrics_collector.py
+        description: "System metrics and performance tracking"
+        dependencies: [core]
+        max_lines: 300
+        
+        tasks:
+          - task: "Implement metric collection middleware"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Add API response time tracking"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Track marketplace API usage"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Monitor database query performance"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Create metrics aggregation service"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+
+  # 4. Admin Dashboard Backend
+  admin_api:
+    path: backend/routers
+    language: python
+    priority: medium
+    estimated_hours: 25
+    
+    components:
+      admin_routes:
+        file: backend/routers/admin.py
+        description: "Admin API endpoints"
+        dependencies: [auth, analytics_service]
+        max_lines: 400
+        
+        tasks:
+          - task: "Create admin authentication middleware"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Implement system health endpoints"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Add user management endpoints"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 8
+            
+          - task: "Create analytics dashboard endpoints"
+            estimate: "5h"
+            complexity: medium
+            tests_required: 8
+            
+          - task: "Add configuration management endpoints"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Implement audit log endpoints"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+      
+      admin_models:
+        file: backend/db/admin_models.py
+        description: "Admin-specific database models"
+        dependencies: [db]
+        max_lines: 250
+        
+        tasks:
+          - task: "Create admin user model"
+            estimate: "2h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add audit log model"
+            estimate: "3h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Create system config model"
+            estimate: "2h"
+            complexity: low
+            tests_required: 4
+
+  # 5. Rate Limiting & Performance
+  rate_limiting:
+    path: backend/middleware
+    language: python
+    priority: high
+    estimated_hours: 20
+    
+    components:
+      rate_limiter:
+        file: backend/middleware/rate_limiter.py
+        description: "Redis-based rate limiting"
+        dependencies: [core, realtime]
+        max_lines: 300
+        
+        tasks:
+          - task: "Implement sliding window rate limiter"
+            estimate: "5h"
+            complexity: high
+            tests_required: 8
+            
+          - task: "Add per-user rate limiting"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 6
+            
+          - task: "Create per-endpoint rate limits"
+            estimate: "3h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Add rate limit headers to responses"
+            estimate: "2h"
+            complexity: low
+            tests_required: 3
+            
+          - task: "Implement rate limit exceeded handler"
+            estimate: "2h"
+            complexity: low
+            tests_required: 4
+      
+      performance_middleware:
+        file: backend/middleware/performance.py
+        description: "Performance monitoring middleware"
+        dependencies: [metrics_collector]
+        max_lines: 250
+        
+        tasks:
+          - task: "Create request timing middleware"
+            estimate: "3h"
+            complexity: low
+            tests_required: 4
+            
+          - task: "Add slow query detection"
+            estimate: "4h"
+            complexity: medium
+            tests_required: 5
+            
+          - task: "Implement memory usage tracking"
+            estimate: "3h"
+            complexity: medium
+            tests_required: 4
+
+  # 6. Database Optimization
+  database_optimization:
+    path: backend/db
+    language: python
+    priority: medium
+    estimated_hours: 15
+    
+    tasks:
+      - task: "Add composite indexes for common queries"
+        estimate: "3h"
+        complexity: medium
+        tests_required: 5
+        
+      - task: "Optimize valuation query performance"
+        estimate: "4h"
+        complexity: medium
+        tests_required: 6
+        
+      - task: "Add database connection pooling"
+        estimate: "3h"
+        complexity: medium
+        tests_required: 4
+        
+      - task: "Implement query result caching"
+        estimate: "4h"
+        complexity: medium
+        tests_required: 6
+        
+      - task: "Create database performance tests"
+        estimate: "4h"
+        complexity: medium
+        tests_required: 8
+
+  # 7. Frontend Admin Dashboard
+  admin_frontend:
+    path: frontend/pages/admin
+    language: typescript
+    framework: next.js
+    priority: medium
+    estimated_hours: 40
+    
+    components:
+      - component: "Dashboard overview page"
+        estimate: "6h"
+        
+      - component: "System health monitoring"
+        estimate: "6h"
+        
+      - component: "Analytics charts and graphs"
+        estimate: "8h"
+        
+      - component: "User management interface"
+        estimate: "6h"
+        
+      - component: "API usage dashboard"
+        estimate: "6h"
+        
+      - component: "Bid outcome analysis"
+        estimate: "8h"
+
+# API Integration Specifications
+api_integrations:
+  ebay:
+    api_version: "Finding API v1.13.0, Shopping API v1.13.0"
+    authentication: "OAuth 2.0"
+    rate_limits:
+      - "5,000 calls per day (free tier)"
+      - "10 calls per second"
+    endpoints:
+      - "findItemsAdvanced"
+      - "findCompletedItems"
+      - "GetSingleItem"
+    documentation: "https://developer.ebay.com/docs"
+    
+  etsy:
+    api_version: "v3"
+    authentication: "OAuth 2.0"
+    rate_limits:
+      - "10,000 calls per day"
+      - "10 calls per second per app"
+    endpoints:
+      - "getListingsByShop"
+      - "findAllListingsActive"
+      - "getListingTranslation"
+    documentation: "https://developers.etsy.com/documentation"
+    
+  sahibinden:
+    method: "Web Scraping"
+    rate_limits:
+      - "Self-imposed: 1 request per 2 seconds"
+      - "Respect robots.txt"
+    strategy: "BeautifulSoup4 + requests"
+    caching: "24 hours for listing data"
+
+# Testing Requirements (Phase 2: 80% coverage)
+testing:
+  coverage_targets:
+    marketplace_integrations: 85%
+    valuation_v2: 85%
+    analytics_service: 80%
+    admin_api: 80%
+    rate_limiting: 90%
+    
+  test_types:
+    unit_tests:
+      - "All API clients with mocked responses"
+      - "Rate limiter with Redis mock"
+      - "Learning service algorithms"
+      - "Admin authentication logic"
+    
+    integration_tests:
+      - "End-to-end API flows"
+      - "Database query performance"
+      - "Cache invalidation"
+      - "Rate limiting enforcement"
+    
+    load_tests:
+      - "Concurrent API requests"
+      - "Rate limiter under load"
+      - "Database query performance"
+      - "Redis cache performance"
+
+# Performance Requirements
+performance:
+  targets:
+    api_response_time: "<200ms (p95)"
+    database_query_time: "<50ms (p95)"
+    cache_hit_ratio: ">80%"
+    marketplace_api_calls: "<100 per valuation"
+    
+  monitoring:
+    - "Request timing middleware"
+    - "Database query logging"
+    - "Redis cache metrics"
+    - "External API latency tracking"
+
+# Security Enhancements (Phase 2: Strict)
+security:
+  requirements:
+    - "Implement rate limiting on all endpoints"
+    - "Add API key rotation mechanism"
+    - "Encrypt all marketplace API credentials"
+    - "Add admin role-based access control (RBAC)"
+    - "Implement audit logging for admin actions"
+    - "Add HTTPS enforcement in production"
+    - "Implement CORS with whitelist"
+    - "Add request validation and sanitization"
+    
+  compliance:
+    - "Store no sensitive data in logs"
+    - "Encrypt data at rest (database)"
+    - "Encrypt data in transit (HTTPS/TLS)"
+    - "Regular security audits"
+
+# Migration from Phase 1
+migration_tasks:
+  - task: "Create adapter migration strategy"
+    description: "Plan to replace mock adapters with real ones"
+    estimate: "2h"
+    
+  - task: "Data migration for learning loop"
+    description: "Migrate existing bid data for analysis"
+    estimate: "3h"
+    
+  - task: "Update existing tests for real APIs"
+    description: "Replace mock tests with real API tests"
+    estimate: "8h"
+    
+  - task: "Add backward compatibility layer"
+    description: "Support both mock and real adapters during transition"
+    estimate: "4h"
+
+# Documentation Requirements
+documentation:
+  required:
+    - "API integration guides (eBay, Etsy, Sahibinden)"
+    - "Rate limiting documentation"
+    - "Admin API reference"
+    - "Analytics service usage guide"
+    - "Performance optimization guide"
+    - "Deployment guide updates"
+    - "API credentials setup guide"
+
+# Timeline & Milestones
+timeline:
+  week_7:
+    focus: "Marketplace API Integrations"
+    deliverables:
+      - "eBay API client complete"
+      - "Etsy API client complete"
+      - "Sahibinden scraper complete"
+      - "Adapter factory implemented"
+    
+  week_8:
+    focus: "Valuation & Analytics"
+    deliverables:
+      - "Real estimator with API integration"
+      - "Outcome tracker implemented"
+      - "Learning service basic version"
+      - "Metrics collector active"
+    
+  week_9:
+    focus: "Admin Dashboard & Performance"
+    deliverables:
+      - "Admin API endpoints complete"
+      - "Rate limiting implemented"
+      - "Performance middleware active"
+      - "Database optimization done"
+    
+  week_10:
+    focus: "Testing & Documentation"
+    deliverables:
+      - "80% test coverage achieved"
+      - "Load tests passing"
+      - "Documentation complete"
+      - "Admin frontend MVP ready"
+
+# Success Criteria
+success_criteria:
+  technical:
+    - "All mock adapters replaced with real integrations"
+    - "80%+ test coverage achieved"
+    - "Rate limiting active on all endpoints"
+    - "Admin dashboard functional"
+    - "Performance targets met"
+    - "Zero security vulnerabilities"
+    
+  business:
+    - "Valuation accuracy improved by 20%+"
+    - "Learning loop adjusting margins automatically"
+    - "System health visible via admin dashboard"
+    - "API costs within budget"
+
+# Risk Assessment
+risks:
+  high:
+    - risk: "API rate limit exceeded"
+      mitigation: "Implement aggressive caching and rate limiting"
+      
+    - risk: "eBay/Etsy API downtime"
+      mitigation: "Implement fallback to cached data"
+      
+    - risk: "Sahibinden anti-scraping measures"
+      mitigation: "Implement rotating proxies and user agents"
+  
+  medium:
+    - risk: "Performance degradation with real APIs"
+      mitigation: "Comprehensive caching strategy"
+      
+    - risk: "Cost overruns from API usage"
+      mitigation: "Strict rate limiting and monitoring"
+
+# Dependencies
+dependencies:
+  external:
+    - "eBay Developer Account (approved)"
+    - "Etsy Developer Account (approved)"
+    - "Redis 7+ for advanced caching"
+    - "PostgreSQL 15+ for performance features"
+    
+  internal:
+    - "Phase 1 complete and stable"
+    - "All Phase 1 tests passing"
+    - "Production environment setup"
+
+# Environment Variables (New)
+environment_variables:
+  required_new:
+    - EBAY_APP_ID
+    - EBAY_CERT_ID
+    - EBAY_DEV_ID
+    - EBAY_OAUTH_TOKEN
+    - ETSY_API_KEY
+    - ETSY_SECRET_KEY
+    - ETSY_OAUTH_TOKEN
+    - ADMIN_SECRET_KEY
+    - RATE_LIMIT_ENABLED
+    - CACHE_TTL_SECONDS
