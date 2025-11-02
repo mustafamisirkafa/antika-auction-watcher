@@ -41,5 +41,20 @@ class Settings(BaseSettings):
     # Encryption key for credentials (32 bytes base64 encoded)
     encryption_key: str | None = None
 
+    # Phase 2: Marketplace API Credentials
+    ebay_app_id: str | None = None
+    ebay_cert_id: str | None = None
+    ebay_dev_id: str | None = None
+    ebay_oauth_token: str | None = None
+    
+    etsy_api_key: str | None = None
+    etsy_secret_key: str | None = None
+    etsy_oauth_token: str | None = None
+    
+    # Phase 2: Admin & Rate Limiting
+    admin_secret_key: str | None = None
+    rate_limit_enabled: bool = True
+    cache_ttl_seconds: int = 3600
+
 
 settings = Settings()
