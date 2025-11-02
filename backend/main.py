@@ -5,7 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import settings
 from backend.db.database import create_db_and_tables
 from backend.realtime.redis_manager import RedisManager
-from backend.routers import auth, items, valuations, bids, websocket
+from backend.routers import auth, items, valuations, bids, websocket, admin
+from backend.middleware.rate_limiter import RateLimiter
+from backend.middleware.performance import PerformanceMiddleware
 
 # Initialize Redis manager
 redis_manager = RedisManager()
@@ -39,11 +41,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Phase 2: Performance monitoring middleware
+app.add_middleware(PerformanceMiddleware)
+
+# Phase 2: Rate limiting middleware
+app.add_middleware(RateLimiter, redis_manager=redis_manager)
+
 # Include routers
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(items.router, prefix=settings.api_prefix)
 app.include_router(valuations.router, prefix=settings.api_prefix)
 app.include_router(bids.router, prefix=settings.api_prefix)
+app.include_router(admin.router, prefix=settings.api_prefix)  # Phase 2
 app.include_router(websocket.router)
 
 
