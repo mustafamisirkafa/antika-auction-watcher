@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     ebay_oauth_token: str | None = None
     
     etsy_api_key: str | None = None
+    
+    # Phase 10.5: AutoBid Anti-Sniping
+    anti_sniping_enabled: bool = True
+    sniping_window_sec: int = 7  # Last-X seconds window
+    escalation_cooldown_ms: int = 600  # Min delay between escalations
+    max_escalations_per_item: int = 5
+    sniping_step_multiplier: float = 2.0  # Multiply step in snipe window
+    microbuffer_sec: float = 1.0  # Hold bid if new price seen within 1s
     etsy_secret_key: str | None = None
     etsy_oauth_token: str | None = None
     

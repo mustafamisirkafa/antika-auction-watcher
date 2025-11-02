@@ -1,8 +1,9 @@
 """
-Bid Policy Service for AutoBid (Phase 10).
-Composes bidding decisions based on rules, budgets, and risk caps.
+Bid Policy Service for AutoBid (Phase 10 + 10.5).
+Composes bidding decisions based on rules, budgets, risk caps, and anti-sniping.
 """
 import logging
+import time
 from typing import Dict, Any, Optional, Literal
 from datetime import datetime
 from sqlmodel import Session, select
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 BidMode = Literal["shadow", "auto"]
-DecisionStatus = Literal["ok", "blocked", "skip"]
+DecisionStatus = Literal["ok", "blocked", "skip", "hold"]
 
 
 class BidPolicy:
@@ -23,11 +24,14 @@ class BidPolicy:
     - Budget caps (daily, per-auction)
     - Stop-loss rules
     - Risk thresholds
+    - Anti-sniping (Phase 10.5): dynamic step escalation, microbuffer, cooldown
     """
     
-    def __init__(self, db: Session, redis_client):
+    def __init__(self, db: Session, redis_client, config, timing_intel=None):
         self.db = db
         self.redis = redis_client
+        self.config = config
+        self.timing_intel = timing_intel
     
     async def evaluate_bid_decision(
         self,
@@ -36,7 +40,8 @@ class BidPolicy:
         item_id: str,
         current_price: float,
         valuation: Dict[str, Any],
-        user_rules: Optional[Dict[str, Any]] = None
+        user_rules: Optional[Dict[str, Any]] = None,
+        scheduled_end_ts: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Evaluate whether to place a bid.
@@ -69,11 +74,73 @@ class BidPolicy:
         mode = user_rules.get("mode", "shadow")
         max_bid = user_rules.get("max_bid", rec_max_bid)
         min_confidence = user_rules.get("min_confidence", 0.6)
-        step = user_rules.get("step", 25)
+        base_step = user_rules.get("step", 25)
         stop_loss_pct = user_rules.get("stop_loss_pct", 0.1)
         
-        # Calculate next bid (current + step)
-        next_bid = self._calculate_next_bid(current_price, step)
+        # === PHASE 10.5: Anti-Sniping Logic ===
+        sniping = False
+        step_used = base_step
+        
+        if self.config.anti_sniping_enabled and self.timing_intel:
+            # Check if in sniping window
+            sniping = await self.timing_intel.sniping_window(
+                auction_id, item_id, time.time(), scheduled_end_ts
+            )
+            
+            if sniping:
+                # Apply step multiplier
+                step_used = base_step * self.config.sniping_step_multiplier
+                
+                # Check microburst (hold if price just changed)
+                if await self.timing_intel.recent_microburst(
+                    auction_id, item_id, self.config.microbuffer_sec
+                ):
+                    return {
+                        "ok": False,
+                        "status": "hold",
+                        "reason": f"Microbuffer: price changed < {self.config.microbuffer_sec}s ago",
+                        "blocked_by": "microbuffer",
+                        "mode": mode,
+                        "sniping": True,
+                        "step_used": step_used
+                    }
+                
+                # Check escalation cooldown
+                now_ms = time.time() * 1000
+                next_allowed = await self.timing_intel.next_allowed_escalation_at(
+                    auction_id, item_id
+                )
+                
+                if now_ms < next_allowed:
+                    cooldown_remaining = int(next_allowed - now_ms)
+                    return {
+                        "ok": False,
+                        "status": "hold",
+                        "reason": f"Escalation cooldown: {cooldown_remaining}ms remaining",
+                        "blocked_by": "cooldown",
+                        "mode": mode,
+                        "sniping": True,
+                        "cooldown_ms": cooldown_remaining
+                    }
+                
+                # Check escalation cap
+                escalation_count = await self.timing_intel.get_escalation_count(
+                    auction_id, item_id
+                )
+                
+                if escalation_count >= self.config.max_escalations_per_item:
+                    return {
+                        "ok": False,
+                        "status": "blocked",
+                        "reason": f"Escalation cap reached ({escalation_count}/{self.config.max_escalations_per_item})",
+                        "blocked_by": "escalation_cap",
+                        "mode": mode,
+                        "sniping": True,
+                        "escalation_count": escalation_count
+                    }
+        
+        # Calculate next bid with appropriate step
+        next_bid = self._calculate_next_bid(current_price, step_used)
         
         # === Evaluation checks ===
         
@@ -139,7 +206,7 @@ class BidPolicy:
             }
         
         # All checks passed
-        return {
+        decision = {
             "ok": True,
             "status": "ok",
             "next_bid": next_bid,
@@ -147,8 +214,23 @@ class BidPolicy:
             "mode": mode,
             "confidence": confidence,
             "risk_level": risk_level,
-            "rec_max_bid": rec_max_bid
+            "rec_max_bid": rec_max_bid,
+            "step_used": step_used
         }
+        
+        # Add sniping info if in sniping window
+        if sniping:
+            decision["sniping"] = True
+            decision["reason"] = f"Sniping mode: step x{self.config.sniping_step_multiplier}"
+            
+            # Record escalation
+            if self.timing_intel:
+                escalation_count = await self.timing_intel.record_escalation(
+                    auction_id, item_id
+                )
+                decision["escalation_count"] = escalation_count
+        
+        return decision
     
     def _calculate_next_bid(self, current_price: float, step: float) -> float:
         """Calculate next bid amount."""
