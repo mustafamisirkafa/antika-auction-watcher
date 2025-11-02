@@ -16,8 +16,9 @@ import { ConnectionStatus } from '@/types/auction'
 // Lazy load heavy components
 const LearningInsights = lazy(() => import('@/components/LearningInsights'))
 const MetricsPanel = lazy(() => import('@/components/MetricsPanel'))
+const ProfitDashboard = lazy(() => import('@/pages/profit'))
 
-type TabType = 'feed' | 'learning' | 'metrics'
+type TabType = 'feed' | 'learning' | 'metrics' | 'profit'
 
 export default function Dashboard() {
   const { addOrUpdateAuction, clearAuctions } = useAuctionStore()
@@ -333,6 +334,21 @@ export default function Dashboard() {
               }
             >
               <MetricsPanel autoRefresh={true} refreshInterval={60000} />
+            </Suspense>
+          )}
+
+          {activeTab === 'profit' && (
+            <Suspense
+              fallback={
+                <div className="bg-white rounded-lg shadow-md p-8">
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mb-4"></div>
+                    <p className="text-gray-600">Loading profit advisor...</p>
+                  </div>
+                </div>
+              }
+            >
+              <ProfitDashboard />
             </Suspense>
           )}
         </main>
