@@ -80,16 +80,37 @@ export const useUserBehaviorStore = create<UserBehaviorStore>()(
       biddingHistory: [],
       
       // Feedback actions
-      addFeedback: (feedbackData) => {
-        const newFeedback: FeedbackEntry = {
-          ...feedbackData,
-          timestamp: new Date().toISOString()
-        }
-        
-        set((state) => ({
-          feedback: [...state.feedback, newFeedback]
-        }))
-      },
+  addFeedback: (feedbackData) => {
+    const newFeedback: FeedbackEntry = {
+      ...feedbackData,
+      timestamp: new Date().toISOString()
+    }
+    
+    set((state) => ({
+      feedback: [...state.feedback, newFeedback]
+    }))
+    
+    // Auto-send feedback to backend
+    const sendFeedbackToBackend = async () => {
+      try {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1'
+        await fetch(`${API_BASE_URL}/advisor/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_id: feedbackData.itemId,
+            recommendation_id: feedbackData.recommendationId,
+            feedback_type: feedbackData.feedbackType,
+            actual_outcome: feedbackData.actualOutcome
+          })
+        })
+      } catch (error) {
+        console.error('Failed to send feedback to backend:', error)
+      }
+    }
+    
+    sendFeedbackToBackend()
+  },
       
       getFeedbackForItem: (itemId) => {
         return get().feedback.filter((f) => f.itemId === itemId)

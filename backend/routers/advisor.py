@@ -74,7 +74,11 @@ class FeedbackRequest(BaseModel):
     """User feedback on recommendation"""
     item_id: str
     recommendation_id: str
+    user_id: Optional[str] = None
     feedback_type: str = Field(..., description="helpful, not_helpful, inaccurate, accurate")
+    recommendation_level: Optional[str] = None
+    confidence: Optional[float] = None
+    suggested_max_bid: Optional[float] = None
     comment: Optional[str] = None
     actual_outcome: Optional[dict] = Field(None, description="What actually happened")
 
@@ -308,14 +312,30 @@ async def submit_feedback(feedback: FeedbackRequest):
         }
     """
     try:
-        # In production, store feedback in database for learning
-        # For now, just acknowledge receipt
+        from backend.services.feedback_collector import FeedbackCollector, FeedbackType
+        
+        # Initialize collector
+        collector = FeedbackCollector()
+        await collector.initialize()
+        
+        # Add feedback
+        entry = await collector.add_feedback(
+            item_id=feedback.item_id,
+            recommendation_id=feedback.recommendation_id,
+            user_id=feedback.user_id or "anonymous",
+            feedback_type=FeedbackType(feedback.feedback_type),
+            recommendation_level=feedback.recommendation_level or "unknown",
+            confidence=feedback.confidence or 0.5,
+            suggested_max_bid=feedback.suggested_max_bid,
+            comment=feedback.comment,
+            actual_outcome=feedback.actual_outcome
+        )
         
         return {
             "status": "success",
             "message": "Feedback received and will be used to improve recommendations",
-            "feedback_id": f"fb_{feedback.item_id}_{int(datetime.utcnow().timestamp())}",
-            "timestamp": datetime.utcnow()
+            "feedback_id": entry.feedback_id,
+            "timestamp": entry.timestamp
         }
         
     except Exception as e:
@@ -432,6 +452,73 @@ async def get_explanation():
             "very_high": "Extreme risk, avoid unless necessary"
         }
     }
+
+
+@router.get("/feedback/summary")
+async def get_feedback_summary(days: int = 30):
+    """
+    Get feedback summary statistics
+    
+    Args:
+        days: Number of days to include (default: 30)
+        
+    Returns:
+        Feedback summary with accuracy and helpfulness metrics
+        
+    Example:
+        GET /api/v1/advisor/feedback/summary?days=30
+    """
+    try:
+        from backend.services.feedback_collector import FeedbackCollector
+        from datetime import timedelta
+        
+        collector = FeedbackCollector()
+        await collector.initialize()
+        
+        end_date = datetime.utcnow()
+        start_date = end_date - timedelta(days=days)
+        
+        summary = await collector.get_summary(start_date, end_date)
+        
+        return summary.to_dict()
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get feedback summary: {str(e)}"
+        )
+
+
+@router.get("/learning/progress")
+async def get_learning_progress():
+    """
+    Get learning progress and weight adjustments
+    
+    Returns:
+        Learning progress metrics and current weights
+        
+    Example:
+        GET /api/v1/advisor/learning/progress
+    """
+    try:
+        from backend.services.feedback_collector import FeedbackCollector
+        from backend.services.feedback_learner import FeedbackLearner
+        
+        collector = FeedbackCollector()
+        await collector.initialize()
+        
+        learner = FeedbackLearner(collector)
+        await learner.initialize()
+        
+        progress = await learner.get_learning_progress()
+        
+        return progress
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get learning progress: {str(e)}"
+        )
 
 
 @router.get("/health")
