@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react'
 import { AuctionItem } from '@/types/auction'
 import { useAuctionStore } from '@/store/auctionStore'
+import { useFeedback } from '@/store/userBehavior'
+import AdvisorPanel from './AdvisorPanel'
 
 interface AuctionCardProps {
   auction: AuctionItem
@@ -15,6 +17,8 @@ interface AuctionCardProps {
 
 function AuctionCard({ auction, isRecentlyUpdated }: AuctionCardProps) {
   const [showAnimation, setShowAnimation] = useState(false)
+  const [showAdvisor, setShowAdvisor] = useState(true)
+  const { addFeedback } = useFeedback()
 
   useEffect(() => {
     if (isRecentlyUpdated) {
@@ -23,6 +27,14 @@ function AuctionCard({ auction, isRecentlyUpdated }: AuctionCardProps) {
       return () => clearTimeout(timer)
     }
   }, [isRecentlyUpdated])
+  
+  const handleAdvisorFeedback = (feedbackType: string) => {
+    addFeedback({
+      itemId: auction.id,
+      recommendationId: `rec_${auction.id}_${Date.now()}`,
+      feedbackType: feedbackType as 'helpful' | 'not_helpful' | 'accurate' | 'inaccurate'
+    })
+  }
 
   const confidenceColor = (confidence?: number) => {
     if (!confidence) return 'bg-gray-300'
@@ -182,6 +194,24 @@ function AuctionCard({ auction, isRecentlyUpdated }: AuctionCardProps) {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Bidder */}
+        {auction.bidder && (
+          <div className="mt-2 text-sm text-gray-600">
+            <span className="font-medium">Bidder:</span> {auction.bidder}
+          </div>
+        )}
+        
+        {/* AI Advisor Panel */}
+        {auction.status === 'active' && showAdvisor && (
+          <div className="mt-4">
+            <AdvisorPanel 
+              itemId={auction.id}
+              compact={true}
+              onFeedback={handleAdvisorFeedback}
+            />
           </div>
         )}
 
