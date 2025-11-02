@@ -8,6 +8,7 @@ from pydantic import BaseModel
 import json
 
 from backend.models.team_models import Plan
+from backend.db.database import get_session as get_db
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -86,7 +87,3 @@ async def get_plan(plan_code: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Plan not found")
     
     return PlanResponse.from_plan(plan)
-
-
-# Import dependency
-from backend.db.database import get_session as get_db

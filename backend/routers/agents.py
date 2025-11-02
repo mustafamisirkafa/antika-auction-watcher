@@ -12,6 +12,14 @@ from backend.models.team_models import AgentConfig
 from backend.services.agent_manager import AgentManager
 from backend.services.usage_tracker import UsageTracker
 from backend.middleware.team_context import get_team_context, TeamContext
+from backend.db.database import get_session as get_db
+from backend.routers.auth import get_current_user
+from backend.realtime.redis_manager import RedisManager
+
+def get_redis():
+    """Get Redis client dependency."""
+    from backend.main import redis_manager
+    return redis_manager.redis
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -288,14 +296,3 @@ async def get_usage_stats(
     stats = await agent_manager.get_usage_stats(team_id)
     
     return UsageStatsResponse(**stats)
-
-
-# Import dependencies
-from backend.db.database import get_session as get_db
-from backend.routers.auth import get_current_user
-from backend.realtime.redis_manager import RedisManager
-
-def get_redis():
-    """Get Redis client dependency."""
-    from backend.main import redis_manager
-    return redis_manager.redis

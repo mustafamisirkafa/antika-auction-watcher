@@ -97,7 +97,7 @@ class SystemMetrics(SQLModel, table=True):
     unit: str = Field(max_length=20)
     
     # Context
-    metadata: dict = Field(default={}, sa_column=Column(JSON))
+    extra_metadata: dict = Field(default={}, sa_column=Column(JSON))
     
     # Timestamps
     recorded_at: datetime = Field(default_factory=datetime.utcnow, index=True)

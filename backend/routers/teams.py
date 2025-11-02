@@ -10,6 +10,8 @@ from datetime import datetime
 from backend.db.models import User
 from backend.models.team_models import Team, Membership, MemberRole
 from backend.middleware.team_context import TeamContext, get_team_context
+from backend.db.database import get_session as get_db
+from backend.routers.auth import get_current_user
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
@@ -396,8 +398,3 @@ async def remove_team_member(
     db.commit()
     
     return None
-
-
-# Import dependencies
-from backend.db.database import get_session as get_db
-from backend.routers.auth import get_current_user
