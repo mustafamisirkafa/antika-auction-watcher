@@ -1,0 +1,169 @@
+# Cursor Dynamic Rules for Antika Auction Watcher
+version: 1.1
+project: antika-auction-watcher
+enforcement: strict
+
+# 🔹 GENERAL QUALITY STANDARDS
+quality_gates:
+  - id: imports
+    rule: "No unused imports or wildcard imports"
+    severity: high
+  - id: dead_code
+    rule: "No dead code or commented-out blocks longer than 5 lines"
+    severity: medium
+  - id: naming
+    rule: "All functions use snake_case, classes use PascalCase"
+    severity: medium
+  - id: docstrings
+    rule: "Every public function must include a docstring"
+    severity: low
+  - id: logging
+    rule: "All error handlers must log structured JSON"
+    severity: medium
+
+# 🔹 SECURITY RULES
+security:
+  - id: jwt_secret_env
+    rule: "JWT_SECRET must come from environment variables only"
+    enforcement: required
+  - id: password_hashing
+    rule: "Use bcrypt for all password hashes"
+    enforcement: required
+  - id: instagram_credentials
+    rule: "Instagram credentials must be encrypted before saving"
+    enforcement: required
+  - id: dependency_pinning
+    rule: "All dependencies must be version-pinned in requirements.txt"
+    enforcement: required
+  - id: rate_limiting
+    rule: "All bidding and valuation endpoints must be rate limited"
+    enforcement: required
+
+# 🔹 TESTING REQUIREMENTS
+testing:
+  - id: pytest
+    rule: "Pytest must run without errors"
+    enforcement: required
+  - id: coverage
+    rule: "Minimum 80% test coverage for core and valuation modules"
+    enforcement: required
+  - id: mock_adapters
+    rule: "All mock adapters must include deterministic output for tests"
+    enforcement: required
+
+# 🔹 CODE STYLE
+linting:
+  tool: pylint
+  config:
+    min_score: 9.0
+    disable:
+      - C0114  # missing-module-docstring
+      - C0116  # missing-function-docstring for internal/private funcs
+
+# 🔹 PERFORMANCE CHECKS
+performance:
+  - id: async_io
+    rule: "All I/O heavy routes must use async functions"
+    enforcement: advisory
+  - id: db_indexes
+    rule: "Database models must define indexes for lookup fields"
+    enforcement: advisory
+  - id: cache_usage
+    rule: "Frequently queried data must use Redis cache layer"
+    enforcement: advisory
+
+# 🔹 ENVIRONMENT CONSISTENCY
+environment:
+  required_envs:
+    - DATABASE_URL
+    - REDIS_URL
+    - JWT_SECRET
+    - NEXT_PUBLIC_API_URL
+  optional_envs:
+    - INSTAGRAM_USERNAME
+    - INSTAGRAM_PASSWORD
+  enforce_missing: true
+
+# 🔹 FILE STRUCTURE VALIDATION
+structure:
+  enforce_paths:
+    - backend/core/
+    - backend/db/
+    - backend/services/
+    - backend/realtime/
+    - backend/routers/
+    - frontend/
+  disallow_files:
+    - "*.pyc"
+    - "__pycache__/"
+    - "node_modules/"
+    - ".env"
+  require_files:
+    - docker-compose.yml
+    - .env.example
+    - Makefile
+    - backend/requirements.txt
+
+# 🔹 FILE SIZE & DUPLICATION CONTROL
+file_size:
+  max_lines_per_file: 500
+  enforcement: strict
+  actions:
+    - warn: "File exceeds 400 lines — consider splitting into smaller modules"
+    - fail: "File exceeds 500 lines — must refactor into submodules"
+
+duplication:
+  detection_mode: semantic
+  similarity_threshold: 0.85
+  rules:
+    - "Disallow generating multiple versions of same logical file (e.g. *_v2.py, *_new.py)"
+    - "Detect duplicate class/function names across modules"
+  enforcement: strict
+  actions:
+    - warn: "Duplicate-like file detected — check for redundant agent/service"
+    - fail: "Two or more modules serve same function; refactor or merge"
+
+# 🔹 AUTO-STRUCTURING SUGGESTIONS
+refactoring_guidelines:
+  - "Split modules >400 lines into logical submodules (e.g., estimation/, adapters/, strategies/)"
+  - "Each file should define a single core class or group of related functions only"
+  - "Move constants and schemas to separate files (e.g., constants.py, schemas.py)"
+  - "If a service grows large, extract pipelines to backend/pipelines/<service>_pipeline.py"
+  - "Avoid more than 3 nested directories under services/"
+
+# 🔹 PHASE-SPECIFIC ENFORCEMENT
+phases:
+  phase1:
+    name: Core MVP
+    min_test_coverage: 60
+    allow_mock_data: true
+    enforce_performance: false
+    strict_security: false
+  phase2:
+    name: Real Integrations
+    min_test_coverage: 80
+    allow_mock_data: false
+    enforce_performance: true
+    strict_security: true
+  phase3:
+    name: Scale & Automation
+    min_test_coverage: 85
+    enforce_performance: true
+    strict_security: true
+    require_load_tests: true
+
+# 🔹 AUTO-COMMIT GUARD
+git_hooks:
+  pre_commit:
+    - "pylint backend/"
+    - "pytest --maxfail=1 --disable-warnings -q"
+  pre_push:
+    - "pytest --cov=backend/ --cov-fail-under=80"
+
+# 🔹 REPORTING
+reporting:
+  on_violation: fail
+  log_format: json
+  notify:
+    - console
+    - github_actions
