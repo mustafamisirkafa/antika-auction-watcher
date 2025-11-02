@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import settings
 from backend.db.database import create_db_and_tables
 from backend.realtime.redis_manager import RedisManager
-from backend.routers import auth, items, valuations, bids, websocket, admin
+from backend.routers import auth, items, valuations, bids, websocket, admin, advisor, plans, teams, agents
 from backend.middleware.rate_limiter import RateLimiter
 from backend.middleware.performance import PerformanceMiddleware
 
@@ -19,6 +19,15 @@ async def lifespan(app: FastAPI):
     # Startup
     create_db_and_tables()
     await redis_manager.connect()
+    
+    # Seed plans on startup
+    from backend.services.plan_seeder import seed_plans
+    from backend.db.database import get_session
+    try:
+        with get_session() as session:
+            seed_plans(session)
+    except Exception as e:
+        print(f"Warning: Failed to seed plans: {e}")
     
     yield
     
@@ -53,6 +62,10 @@ app.include_router(items.router, prefix=settings.api_prefix)
 app.include_router(valuations.router, prefix=settings.api_prefix)
 app.include_router(bids.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)  # Phase 2
+app.include_router(advisor.router, prefix=settings.api_prefix)  # Phase 5
+app.include_router(plans.router, prefix=settings.api_prefix)  # Phase 8
+app.include_router(teams.router, prefix=settings.api_prefix)  # Phase 8
+app.include_router(agents.router, prefix=settings.api_prefix)  # Phase 8
 app.include_router(websocket.router)
 
 

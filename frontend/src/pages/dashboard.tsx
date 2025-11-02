@@ -7,8 +7,10 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import Head from 'next/head'
 import { useAuctionStore } from '@/store/auctionStore'
+import { useTeamStore } from '@/store/teamStore'
 import { useWebSocket } from '@/lib/websocket'
 import AuctionFeed from '@/components/AuctionFeed'
+import AgentUsageBar from '@/components/AgentUsageBar'
 import { ConnectionStatus } from '@/types/auction'
 
 // Lazy load heavy components
@@ -19,11 +21,13 @@ type TabType = 'feed' | 'learning' | 'metrics'
 
 export default function Dashboard() {
   const { addOrUpdateAuction, clearAuctions } = useAuctionStore()
+  const { currentTeam, usageStats, refreshUsage } = useTeamStore()
   const { connect, disconnect, onEvent, onStatusChange } = useWebSocket()
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected')
   const [activeTab, setActiveTab] = useState<TabType>('feed')
   const [showEnded, setShowEnded] = useState(false)
   const [stats, setStats] = useState({ active: 0, ended: 0, total: 0 })
+  const [showAgentModal, setShowAgentModal] = useState(false)
 
   // Connect to WebSocket on mount (stays connected across tabs)
   useEffect(() => {
@@ -53,7 +57,7 @@ export default function Dashboard() {
     }
   }, [connect, disconnect, onEvent, onStatusChange, addOrUpdateAuction])
 
-  // Update stats
+  // Update stats and refresh usage
   useEffect(() => {
     const interval = setInterval(() => {
       const { getActiveAuctions, getEndedAuctions, auctions } = useAuctionStore.getState()
@@ -62,10 +66,15 @@ export default function Dashboard() {
         ended: getEndedAuctions().length,
         total: Object.keys(auctions).length,
       })
-    }, 1000)
+      
+      // Refresh usage stats
+      if (currentTeam) {
+        refreshUsage()
+      }
+    }, 5000) // Every 5 seconds
 
     return () => clearInterval(interval)
-  }, [])
+  }, [currentTeam, refreshUsage])
 
   const getStatusColor = () => {
     switch (connectionStatus) {
