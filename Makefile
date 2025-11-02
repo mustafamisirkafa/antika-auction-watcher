@@ -10,7 +10,7 @@ install: ## Install Python dependencies
 setup: ## Setup environment and generate encryption key
 	cp .env.example .env
 	@echo "Generating encryption key..."
-	@python -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
+	@python3 -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
 	@echo "Environment file created. Please update JWT_SECRET in .env"
 
 dev: ## Run development server
