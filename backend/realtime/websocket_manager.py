@@ -97,6 +97,32 @@ class WebSocketManager:
             "status": status
         }
         await self.broadcast(message, "items")
+    
+    async def broadcast_price_update(self, auction_id: str, item_id: str, price: float):
+        """Broadcast price update (Phase 10)"""
+        message = {
+            "type": "price_update",
+            "auction_id": auction_id,
+            "item_id": item_id,
+            "price": price
+        }
+        await self.broadcast(message, "autobid")
+    
+    async def broadcast_autobid_decision(self, decision: dict):
+        """Broadcast AutoBid decision (Phase 10)"""
+        message = {
+            "type": "autobid_decision",
+            **decision
+        }
+        await self.broadcast(message, "autobid")
+    
+    async def broadcast_bid_result(self, result: dict):
+        """Broadcast bid result (Phase 10)"""
+        message = {
+            "type": "bid_result",
+            **result
+        }
+        await self.broadcast(message, "autobid")
 
     def get_connection_count(self, channel: str = None) -> int:
         """Get number of active connections."""
