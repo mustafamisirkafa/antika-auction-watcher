@@ -112,3 +112,6 @@ rules:
     - pylint score >= 9.0
     - test coverage >= 80%
     - no failing tests before merge
+    extensions:
+  - blueprints/phase2_extension.yaml
+
