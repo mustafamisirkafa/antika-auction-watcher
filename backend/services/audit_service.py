@@ -33,9 +33,11 @@ class AuditService:
         decision: Dict[str, Any],
         valuation: Dict[str, Any],
         rule_id: Optional[int] = None,
-        latency_ms: Optional[float] = None
+        latency_ms: Optional[float] = None,
+        seller_id: Optional[str] = None,
+        seller_trust: Optional[float] = None
     ):
-        """Log AutoBid decision event."""
+        """Log AutoBid decision event (Phase 12: includes seller data)."""
         audit = AutoBidAudit(
             team_id=team_id,
             auction_id=auction_id,
@@ -44,14 +46,16 @@ class AuditService:
             current_price=valuation.get("current_price"),
             rec_max_bid=valuation.get("rec_max_bid"),
             next_bid=decision.get("next_bid"),
-            confidence=valuation.get("confidence"),
+            confidence=decision.get("confidence", valuation.get("confidence")),  # Use adjusted confidence
             risk_level=valuation.get("risk_level"),
             decision_ok=decision.get("ok", False),
             decision_reason=decision.get("reason", ""),
             blocked_by=decision.get("blocked_by"),
             rule_id=rule_id,
             mode=decision.get("mode", "shadow"),
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            seller_id=seller_id,
+            seller_trust=seller_trust or decision.get("seller_trust")
         )
         
         self.db.add(audit)
@@ -66,9 +70,11 @@ class AuditService:
         item_id: str,
         bid_amount: float,
         rule_id: Optional[int] = None,
-        mode: Literal["shadow", "auto"] = "shadow"
+        mode: Literal["shadow", "auto"] = "shadow",
+        seller_id: Optional[str] = None,
+        seller_trust: Optional[float] = None
     ):
-        """Log bid dispatch event."""
+        """Log bid dispatch event (Phase 12: includes seller data)."""
         audit = AutoBidAudit(
             team_id=team_id,
             auction_id=auction_id,
@@ -78,7 +84,9 @@ class AuditService:
             decision_ok=True,
             decision_reason="Bid dispatched",
             rule_id=rule_id,
-            mode=mode
+            mode=mode,
+            seller_id=seller_id,
+            seller_trust=seller_trust
         )
         
         self.db.add(audit)
@@ -95,9 +103,11 @@ class AuditService:
         result: Literal["accepted", "rejected", "timeout", "error", "simulated"],
         latency_ms: Optional[float] = None,
         rule_id: Optional[int] = None,
-        mode: Literal["shadow", "auto"] = "shadow"
+        mode: Literal["shadow", "auto"] = "shadow",
+        seller_id: Optional[str] = None,
+        seller_trust: Optional[float] = None
     ):
-        """Log bid result event."""
+        """Log bid result event (Phase 12: includes seller data)."""
         audit = AutoBidAudit(
             team_id=team_id,
             auction_id=auction_id,
@@ -109,7 +119,9 @@ class AuditService:
             decision_reason=f"Bid {result}",
             rule_id=rule_id,
             mode=mode,
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            seller_id=seller_id,
+            seller_trust=seller_trust
         )
         
         self.db.add(audit)

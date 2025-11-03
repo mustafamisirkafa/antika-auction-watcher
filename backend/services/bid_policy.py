@@ -36,7 +36,9 @@ class BidPolicy:
         item_id: str,
         current_price: float,
         valuation: Dict[str, Any],
-        user_rules: Optional[Dict[str, Any]] = None
+        user_rules: Optional[Dict[str, Any]] = None,
+        seller_id: Optional[str] = None,
+        source: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Evaluate whether to place a bid.
@@ -48,6 +50,8 @@ class BidPolicy:
             current_price: Current auction price
             valuation: Valuation result from ValuationReactor
             user_rules: User bidding rules (optional)
+            seller_id: Seller identifier (Phase 12, optional)
+            source: Marketplace source (Phase 12, optional)
         
         Returns:
             Decision dict: {
@@ -55,12 +59,28 @@ class BidPolicy:
                 "next_bid": float,
                 "reason": str,
                 "mode": "shadow" | "auto",
-                "blocked_by": str (if blocked)
+                "blocked_by": str (if blocked),
+                "confidence": float (adjusted by seller trust),
+                "seller_trust": float (if available)
             }
         """
         rec_max_bid = valuation.get("rec_max_bid", 0)
         confidence = valuation.get("confidence", 0)
         risk_level = valuation.get("risk_level", "high")
+        
+        # Phase 12: Adjust confidence based on seller trust score
+        seller_trust = None
+        if seller_id and source:
+            seller_trust = await self._get_seller_trust(seller_id, source)
+            if seller_trust is not None:
+                # Adjust confidence: confidence *= seller_trust
+                confidence = confidence * seller_trust
+                logger.debug(
+                    f"Adjusted confidence by seller trust: "
+                    f"original={valuation.get('confidence', 0):.2f}, "
+                    f"trust={seller_trust:.2f}, "
+                    f"adjusted={confidence:.2f}"
+                )
         
         # Default rules if not provided
         if user_rules is None:
@@ -139,7 +159,7 @@ class BidPolicy:
             }
         
         # All checks passed
-        return {
+        result = {
             "ok": True,
             "status": "ok",
             "next_bid": next_bid,
@@ -149,6 +169,12 @@ class BidPolicy:
             "risk_level": risk_level,
             "rec_max_bid": rec_max_bid
         }
+        
+        # Phase 12: Include seller trust if available
+        if seller_trust is not None:
+            result["seller_trust"] = seller_trust
+        
+        return result
     
     def _calculate_next_bid(self, current_price: float, step: float) -> float:
         """Calculate next bid amount."""
@@ -219,3 +245,32 @@ class BidPolicy:
             "stop_loss_pct": 0.1,
             "allow_high_risk": False
         }
+    
+    async def _get_seller_trust(self, seller_id: str, source: str) -> Optional[float]:
+        """
+        Get seller trust score from cache (Phase 12).
+        
+        Args:
+            seller_id: Seller identifier
+            source: Marketplace source
+        
+        Returns:
+            Trust score (0-1) or None if not available
+        """
+        import json
+        
+        cache_key = f"seller:profile:{seller_id}:{source}"
+        
+        try:
+            cached_data = await self.redis.get(cache_key)
+            
+            if cached_data:
+                profile = json.loads(cached_data)
+                trust_score = profile.get("trust_score")
+                
+                if trust_score is not None:
+                    return float(trust_score)
+        except Exception as e:
+            logger.warning(f"Error fetching seller trust: {e}")
+        
+        return None

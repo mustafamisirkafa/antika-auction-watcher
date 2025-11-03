@@ -80,6 +80,10 @@ class AutoBidAudit(SQLModel, table=True):
     rule_id: Optional[int] = Field(default=None, foreign_key="bid_rules.id")
     mode: Literal["shadow", "auto"] = Field(default="shadow")
     
+    # Phase 12: Seller intelligence
+    seller_id: Optional[str] = Field(default=None, max_length=200)
+    seller_trust: Optional[float] = Field(default=None, ge=0, le=1)
+    
     # Performance
     latency_ms: Optional[float] = None
     
