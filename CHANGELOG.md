@@ -5,6 +5,14 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 🚀 **Phase 14: User Seller Preferences**
+  - Per-user allowlist and blocklist for sellers
+  - API endpoints: GET /api/user/prefs, POST /api/user/prefs/update
+  - Redis caching (10-minute TTL) + Postgres storage
+  - Event bus integration (user_prefs.updated events)
+  - Integration with AutoBid Engine for bid filtering
+  - Check seller allowed endpoint for real-time validation
+
 - 🚀 **Phase 12: Seller Intelligence Layer**
   - Per-seller behavioral analytics (pricing strategy, discount habits, reliability)
   - Seller profile builder with trust scoring

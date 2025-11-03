@@ -188,22 +188,6 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ---
 
-### Phase 14: User Seller Preferences (Week 11-12) [PLANNED]
-**Goal:** Allow users to blocklist/allowlist sellers.
-
-**Scope:**
-- `SellerPreference` model (blocklist, allowlist, notes)
-- CRUD API for seller preferences
-- Integration with BidPolicy (block bids from blocklisted sellers)
-- Frontend UI: Seller preference manager
-- Audit logging for preference-based decisions
-
-**Success Criteria:**
-- Blocklisted sellers excluded from AutoBid
-- Allowlisted sellers prioritized in mixed auctions
-- 80%+ coverage
-
----
 
 ### Phase 15: Seller Collaboration Network (Week 12) [PLANNED]
 **Goal:** Detect and visualize seller networks (related sellers, fraud detection).
@@ -331,7 +315,8 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 | Phase 10 | Week 8 | ? Complete |
 | Phase 11 | Week 9 | ? Complete |
 | Phase 12 | Week 10 | ? Complete |
-| Phase 14-15 | Week 11-12 | ?? Planned |
+| Phase 14 (API) | Week 11 | ✅ Backend Complete |
+| Phase 15+ | Week 12+ | 🚧 Planned |
 | Phase 16-18 | Week 13-17 | ?? Planned |
 | Phase 19-20 | Week 18-20 | ?? Planned |
 
