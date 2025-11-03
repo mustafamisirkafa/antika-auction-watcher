@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import settings
 from backend.db.database import create_db_and_tables
 from backend.realtime.redis_manager import RedisManager
-from backend.routers import auth, items, valuations, bids, websocket, admin, advisor, plans, teams, agents
+from backend.routers import auth, items, valuations, bids, websocket, admin, advisor, plans, teams, agents, user_prefs
 from backend.middleware.rate_limiter import RateLimiter
 from backend.middleware.performance import PerformanceMiddleware
 
@@ -66,6 +66,7 @@ app.include_router(advisor.router, prefix=settings.api_prefix)  # Phase 5
 app.include_router(plans.router, prefix=settings.api_prefix)  # Phase 8
 app.include_router(teams.router, prefix=settings.api_prefix)  # Phase 8
 app.include_router(agents.router, prefix=settings.api_prefix)  # Phase 8
+app.include_router(user_prefs.router)  # Phase 14
 app.include_router(websocket.router)
 
 

@@ -82,6 +82,23 @@ class BidPolicy:
                     f"adjusted={confidence:.2f}"
                 )
         
+        # Phase 14: Check user seller preferences (allowlist/blocklist)
+        if seller_id and source:
+            user_id = user_rules.get("user_id") if user_rules else None
+            if user_id:
+                preference_check = await self._check_user_seller_preferences(
+                    user_id, team_id, seller_id, source
+                )
+                if not preference_check["allowed"]:
+                    return {
+                        "ok": False,
+                        "status": "blocked",
+                        "reason": f"Seller blocked by user preference: {preference_check['reason']}",
+                        "blocked_by": "user_preference",
+                        "mode": "shadow"  # Always block in shadow mode
+                    }
+                logger.debug(f"User preference check: {preference_check['reason']}")
+        
         # Default rules if not provided
         if user_rules is None:
             user_rules = await self._get_default_rules(team_id, item_id)
@@ -274,3 +291,55 @@ class BidPolicy:
             logger.warning(f"Error fetching seller trust: {e}")
         
         return None
+    
+    async def _check_user_seller_preferences(
+        self, user_id: int, team_id: int, seller_id: str, source: str
+    ) -> Dict[str, Any]:
+        """
+        Check user seller preferences (Phase 14).
+        
+        Args:
+            user_id: User ID
+            team_id: Team ID
+            seller_id: Seller identifier
+            source: Marketplace source
+        
+        Returns:
+            {"allowed": bool, "reason": str}
+        """
+        import json
+        
+        cache_key = f"user_prefs:{user_id}"
+        
+        try:
+            # Try Redis cache first
+            cached_data = await self.redis.get(cache_key)
+            
+            if cached_data:
+                prefs = json.loads(cached_data)
+                allowlist = prefs.get("allowlist", [])
+                blocklist = prefs.get("blocklist", [])
+            else:
+                # Fallback to default (no restrictions)
+                return {"allowed": True, "reason": "No user preferences set"}
+            
+            seller_key = f"{seller_id}:{source}"
+            
+            # Check blocklist first (highest priority)
+            if seller_key in blocklist:
+                return {"allowed": False, "reason": "Seller is in user blocklist"}
+            
+            # If allowlist is empty, allow by default
+            if not allowlist:
+                return {"allowed": True, "reason": "No allowlist restrictions"}
+            
+            # If allowlist exists, check membership
+            if seller_key in allowlist:
+                return {"allowed": True, "reason": "Seller is in user allowlist"}
+            
+            return {"allowed": False, "reason": "Seller not in user allowlist"}
+        
+        except Exception as e:
+            logger.warning(f"Error checking user seller preferences: {e}")
+            # On error, allow by default (fail open)
+            return {"allowed": True, "reason": "Preference check failed (default allow)"}
