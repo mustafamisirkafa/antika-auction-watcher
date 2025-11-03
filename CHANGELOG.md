@@ -5,6 +5,23 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 📊 **Phase 17: Analytics Dashboard**
+  - Backend analytics router (`GET /api/analytics/overview`)
+  - Aggregates 5 system metrics concurrently
+  - 15-second Redis cache for performance
+  - Frontend dashboard page with 5 widgets:
+    - AutoBid status card (active bids, SLA p95)
+    - Valuation chart (market value trends, demand score)
+    - Seller trust pie chart (trust distribution)
+    - User preferences bars (allowlist/blocklist impact)
+    - System health status (Redis, cache, DB latency)
+  - Recharts integration for visualizations
+  - React Query with 10-second auto-refresh
+  - Turkish localized analytics labels (40+ translations)
+  - Performance: <150ms backend response time
+  - 8 comprehensive unit tests
+  - Responsive grid layout (mobile → desktop)
+
 - 🌍 **Phase 16-TR: Full Turkish Localization**
   - Frontend i18n library with 150+ Turkish translations
   - `frontend/src/i18n/tr.json` - Complete translation dictionary

@@ -233,6 +233,29 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ---
 
+### Phase 17: Analytics Dashboard (Week 13)
+**Status:** ✅ Complete  
+**Goal:** Single-screen monitoring view with real-time system metrics.
+
+**Scope:**
+- Backend analytics router (`/api/analytics/overview`)
+- 5 concurrent metric aggregations
+- 15-second Redis cache
+- Frontend dashboard page with 5 widgets
+- Recharts visualizations
+- 10-second auto-refresh
+- Turkish localized labels
+- Performance: <150ms backend response
+
+**Success Criteria:**
+- ✅ GET /api/analytics/overview functional (<150ms)
+- ✅ 5 widgets display correctly
+- ✅ Turkish labels visible
+- ✅ Auto-refresh every 10s works
+- ✅ SLA ≤3s maintained
+
+---
+
 ### Phase 17: Mobile App (Week 14-16) [PLANNED]
 **Goal:** Native mobile app for iOS and Android.
 
@@ -326,14 +349,15 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 | Phase 11 | Week 9 | ✅ Complete |
 | Phase 12 | Week 10 | ✅ Complete |
 | Phase 14 | Week 11 | ✅ Complete |
-| Phase 16-TR | Week 12 | ✅ Complete |
-| Phase 17-18 | Week 13-14 | 🚧 Planned |
+| Phase 17 | Week 13 | ✅ Complete |
+| Phase 18-19 | Week 14-15 | 🚧 Planned |
 
 ---
 
 ## 📚 Related Documentation
 - `CHANGELOG.md` - All changes by phase
-- `PHASE16_TR_MODE.md` - Turkish Localization (Latest)
+- `PHASE17_ANALYTICS_DASHBOARD.md` - Analytics Dashboard (Latest)
+- `PHASE16_TR_MODE.md` - Turkish Localization
 - `PHASE14_COMPLETE_FULL.md` - User Seller Preferences
 - `PHASE12_COMPLETE.md` - Seller Intelligence Layer
 - `PHASE11_COMPLETE.md` - Dynamic Valuation Feed
