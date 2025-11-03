@@ -349,7 +349,7 @@ Total           = 1905ms ? (<3s SLA)
 2. **`PHASE12_IMPLEMENTATION_SUMMARY.md`** - Detailed technical docs
 3. **`PHASE12_FINAL_SUMMARY.md`** - This file (executive summary)
 4. **`CHANGELOG.md`** - Updated with Phase 12 entry
-5. **`ROADMAP.md`** - Phase 12 marked complete, Phase 13-20 planned
+5. **`ROADMAP.md`** - Phase 12 marked complete, Phase 14-20 planned
 
 ### API Documentation
 - OpenAPI schema: Automatically updated via FastAPI
@@ -389,11 +389,6 @@ Total           = 1905ms ? (<3s SLA)
    - Category-specific seller rankings
 
 ### Medium-term (Week 12-14)
-6. **Phase 13: Seller Reputation Alerts**
-   - Monitor trust score drops
-   - Push notifications to users
-   - Email/SMS integration
-
 7. **Phase 14: User Seller Preferences**
    - Blocklist/allowlist functionality
    - BidPolicy integration (block bids)
@@ -468,6 +463,6 @@ For questions, issues, or feedback on Phase 12:
 ---
 
 _Phase 12 implementation completed successfully._  
-_Awaiting directive for Phase 13 (Seller Reputation Alerts) or further refinements._
+_Awaiting directive for Phase 14 (User Seller Preferences) or further refinements._
 
 **?? Ready for Testing & Deployment!**

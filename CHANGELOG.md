@@ -5,6 +5,14 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 🚀 **Phase 12: Seller Intelligence Layer**
+  - Per-seller behavioral analytics (pricing strategy, discount habits, reliability)
+  - Seller profile builder with trust scoring
+  - Integration with AutoBid Engine (confidence adjustment via seller trust)
+  - API endpoints: seller profiles, top sellers, market trends, refresh
+  - Redis caching (24h TTL) + Postgres storage
+  - Audit logging extended with seller_id and seller_trust fields
+
 - ?? **Phase 11: Dynamic Valuation Feed**
   - External market data integration (eBay, Etsy, Instagram, Sahibinden)
   - Data fusion engine with weighted merge algorithm
@@ -41,6 +49,12 @@ All notable changes to Antika Auction Watcher will be documented in this file.
   - Usage statistics
 
 ### Removed
+- ✂️ **Phase 13: Seller Reputation Alerts**
+  - **Reason:** Unnecessary alert complexity; trust data already integrated into AutoBid
+  - **Impact:** None — Seller trust scores remain available via API
+  - Removed to maintain lean, reactive-only architecture
+  - Real-time alerts deemed redundant with existing AutoBid trust integration
+
 - ?? **Phase 10.5 Anti-Sniping Tactic Engine**
   - **Reason:** Not relevant to system purpose (our engine itself is a bot)
   - **Impact:** None ? AutoBid performance and logic unchanged
@@ -51,6 +65,14 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [1.0.0] - 2025-11-02
 
 ### Added
+- 🚀 **Phase 12: Seller Intelligence Layer**
+  - Per-seller behavioral analytics (pricing strategy, discount habits, reliability)
+  - Seller profile builder with trust scoring
+  - Integration with AutoBid Engine (confidence adjustment via seller trust)
+  - API endpoints: seller profiles, top sellers, market trends, refresh
+  - Redis caching (24h TTL) + Postgres storage
+  - Audit logging extended with seller_id and seller_trust fields
+
 - Phase 1-7: Core backend and frontend infrastructure
 - User authentication and authorization
 - Real-time auction monitoring

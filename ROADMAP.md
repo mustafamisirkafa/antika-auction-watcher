@@ -181,21 +181,10 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ## ?? Planned Phases
 
-### Phase 13: Seller Reputation Alerts (Week 11) [PLANNED]
-**Goal:** Notify users when seller trust scores drop significantly.
-
-**Scope:**
-- Seller trust monitoring service
-- Threshold-based alert triggers
-- WebSocket push notifications
-- Email/SMS integration (optional)
-- Alert history dashboard
-- User alert preferences
-
-**Success Criteria:**
-- Alerts trigger within 5 minutes of trust drop
-- False positive rate < 5%
-- 80%+ coverage
+### ~~Phase 13: Seller Reputation Alerts~~ (Week 11)
+**Status:** ❌ Removed  
+**Reason:** Unnecessary alert complexity; trust data already integrated into AutoBid decisions  
+**Impact:** None — Seller trust scores remain available via API; real-time alerts deemed redundant
 
 ---
 
@@ -342,7 +331,7 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 | Phase 10 | Week 8 | ? Complete |
 | Phase 11 | Week 9 | ? Complete |
 | Phase 12 | Week 10 | ? Complete |
-| Phase 13-15 | Week 11-12 | ?? Planned |
+| Phase 14-15 | Week 11-12 | ?? Planned |
 | Phase 16-18 | Week 13-17 | ?? Planned |
 | Phase 19-20 | Week 18-20 | ?? Planned |
 

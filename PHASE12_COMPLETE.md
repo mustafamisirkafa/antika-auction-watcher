@@ -196,7 +196,7 @@ trust = (
 - ? `PHASE12_COMPLETE.md` (this file)
 - ? `PHASE12_IMPLEMENTATION_SUMMARY.md` (detailed technical summary)
 - ? `CHANGELOG.md` (updated with Phase 12 entry)
-- ? `ROADMAP.md` (Phase 12 marked complete, Phase 13+ planned)
+- ? `ROADMAP.md` (Phase 12 marked complete, Phase 14+ planned)
 
 ### API Documentation
 - OpenAPI schema automatically updated via FastAPI
@@ -223,9 +223,9 @@ trust = (
    - E2E integration tests
 
 ### Future Enhancements
-- **Phase 13:** Seller reputation alerts (trust drop notifications)
 - **Phase 14:** User seller preferences (blocklist/allowlist)
 - **Phase 15:** Seller collaboration network (fraud detection)
+- **Phase 16:** Multi-language support (English & Turkish)
 - **ML Integration:** Fine-tune trust scoring with production data
 - **Advanced Analytics:** Category-specific seller rankings
 
@@ -264,4 +264,4 @@ trust = (
 ---
 
 _Phase 12 completed on 2025-11-02._  
-_Awaiting directive for Phase 13 or further refinements._
+_Awaiting directive for Phase 14 (User Seller Preferences) or further refinements._

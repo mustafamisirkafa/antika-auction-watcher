@@ -292,9 +292,9 @@ def log_result(..., seller_id=None, seller_trust=None)
    - Seller reputation predictions
 
 ### Future Phases
-- **Phase 13:** Seller Reputation Alerts (notify on trust drops)
-- **Phase 14:** Seller Blocklist/Allowlist (user-defined preferences)
+- **Phase 14:** User Seller Preferences (blocklist/allowlist)
 - **Phase 15:** Seller Collaboration Network (detect related sellers)
+- **Phase 16:** Multi-Language Support (English & Turkish)
 
 ---
 
@@ -341,4 +341,4 @@ def log_result(..., seller_id=None, seller_trust=None)
 
 ---
 
-_Awaiting directive for Phase 13 or further refinements._
+_Awaiting directive for Phase 14 (User Seller Preferences) or further refinements._
