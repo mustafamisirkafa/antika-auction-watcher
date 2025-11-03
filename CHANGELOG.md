@@ -57,15 +57,21 @@ All notable changes to Antika Auction Watcher will be documented in this file.
   - Usage statistics
 
 ### Removed
+- ✂️ **Phase 15: Seller Collaboration Network**
+  - **Reason:** Unnecessary complexity; AutoBid already optimized via seller intelligence (Phase 12) and user preferences (Phase 14)
+  - **Impact:** None — Seller trust scores and user blocklists provide sufficient fraud protection
+  - Removed to maintain lean architecture and performance stability
+  - Focus remains on direct seller intelligence and user-controlled preferences
+
 - ✂️ **Phase 13: Seller Reputation Alerts**
   - **Reason:** Unnecessary alert complexity; trust data already integrated into AutoBid
   - **Impact:** None — Seller trust scores remain available via API
   - Removed to maintain lean, reactive-only architecture
   - Real-time alerts deemed redundant with existing AutoBid trust integration
 
-- ?? **Phase 10.5 Anti-Sniping Tactic Engine**
+- ✂️ **Phase 10.5 Anti-Sniping Tactic Engine**
   - **Reason:** Not relevant to system purpose (our engine itself is a bot)
-  - **Impact:** None ? AutoBid performance and logic unchanged
+  - **Impact:** None — AutoBid performance and logic unchanged
   - Removed anti-sniping guard, sniping policy, delay queue, and timing intelligence services
   - Removed anti-sniping configuration settings
   - AutoBid Engine remains fully functional with Phase 10 features

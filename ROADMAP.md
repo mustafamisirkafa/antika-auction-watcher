@@ -166,7 +166,7 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 ---
 
 ### Phase 12: Seller Intelligence Layer (Week 10)
-**Status:** ? Complete  
+**Status:** ✅ Complete  
 **Scope:**
 - Seller behavioral analytics (pricing strategy, discount habits, reliability)
 - SellerEngine service (per-seller metrics)
@@ -175,7 +175,22 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 - Integration with AutoBid Engine (confidence adjustment via trust score)
 - Audit logging extended with seller_id and seller_trust
 - Redis caching (24h TTL)
-- ? 3s AutoBid SLA maintained
+- ≤ 3s AutoBid SLA maintained
+
+---
+
+### Phase 14: User Seller Preferences (Week 11)
+**Status:** ✅ Complete  
+**Scope:**
+- User-controlled seller allowlists and blocklists
+- CRUD API: `/api/user/prefs`, `/api/user/prefs/update`, `/api/user/prefs/check/{seller_id}`
+- Redis caching (10-min TTL) + Postgres storage
+- Event bus integration (`user_prefs.updated`)
+- Integration with AutoBid Engine (bid filtering by user preference)
+- Frontend UI: SellerPreferences page with add/remove actions
+- Optimistic UI updates with React Query + Zustand
+- 25 comprehensive tests (backend)
+- ≤ 3s AutoBid SLA maintained
 
 ---
 
@@ -188,21 +203,10 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ---
 
-
-### Phase 15: Seller Collaboration Network (Week 12) [PLANNED]
-**Goal:** Detect and visualize seller networks (related sellers, fraud detection).
-
-**Scope:**
-- Graph-based seller relationship analysis
-- Shared listing patterns detection
-- Suspicious behavior detection (price fixing, shill bidding)
-- Network visualization UI
-- Admin alerts for anomalous networks
-
-**Success Criteria:**
-- Detect related sellers with >90% accuracy
-- Fraud detection recall >85%
-- Network graph renders in <2s
+### ~~Phase 15: Seller Collaboration Network~~ (Week 12)
+**Status:** ❌ Removed  
+**Reason:** Unnecessary complexity; AutoBid already optimized via seller intelligence (Phase 12) and user preferences (Phase 14)  
+**Impact:** None — Seller trust scores and user blocklists provide sufficient fraud protection
 
 ---
 
@@ -309,22 +313,22 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 | Phase | Duration | Status |
 |-------|----------|--------|
-| Phase 1-7 | Week 1-5 | ? Complete |
-| Phase 8 | Week 6 | ? Complete |
-| Phase 9 | Week 7 | ? Complete |
-| Phase 10 | Week 8 | ? Complete |
-| Phase 11 | Week 9 | ? Complete |
-| Phase 12 | Week 10 | ? Complete |
-| Phase 14 (API) | Week 11 | ✅ Backend Complete |
-| Phase 15+ | Week 12+ | 🚧 Planned |
-| Phase 16-18 | Week 13-17 | ?? Planned |
-| Phase 19-20 | Week 18-20 | ?? Planned |
+| Phase 1-7 | Week 1-5 | ✅ Complete |
+| Phase 8 | Week 6 | ✅ Complete |
+| Phase 9 | Week 7 | ✅ Complete |
+| Phase 10 | Week 8 | ✅ Complete |
+| Phase 11 | Week 9 | ✅ Complete |
+| Phase 12 | Week 10 | ✅ Complete |
+| Phase 14 | Week 11 | ✅ Complete |
+| Phase 16-18 | Week 12-14 | 🚧 Planned |
+| Phase 19-20 | Week 18-20 | 📋 Planned |
 
 ---
 
-## ?? Related Documentation
+## 📚 Related Documentation
 - `CHANGELOG.md` - All changes by phase
-- `PHASE12_COMPLETE.md` - Latest phase details
+- `PHASE14_COMPLETE_FULL.md` - User Seller Preferences (Latest)
+- `PHASE12_COMPLETE.md` - Seller Intelligence Layer
 - `PHASE11_COMPLETE.md` - Dynamic Valuation Feed
 - `PHASE10_COMPLETE.md` - AutoBid Engine
 - `PHASE9_COMPLETE.md` - Profit Advisor
@@ -332,4 +336,4 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ---
 
-_Last Updated: 2025-11-02_
+_Last Updated: 2025-11-03_
