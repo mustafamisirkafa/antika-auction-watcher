@@ -5,6 +5,19 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- 🌍 **Phase 16-TR: Full Turkish Localization**
+  - Frontend i18n library with 150+ Turkish translations
+  - `frontend/src/i18n/tr.json` - Complete translation dictionary
+  - `frontend/src/lib/i18n.ts` - i18n helper functions
+  - All UI components localized (SellerPreferences, SellerListTable)
+  - Backend i18n helper (`backend/core/i18n.py`)
+  - Turkish API response messages (50+ success/error translations)
+  - Turkish date/time formatting (DD.MM.YYYY HH:mm)
+  - Turkish currency formatting (₺ Turkish Lira)
+  - Configuration: default language = "tr"
+  - Fallback strategy for missing translations
+  - Performance maintained: ≤3s SLA
+
 - 🚀 **Phase 14: User Seller Preferences**
   - Per-user allowlist and blocklist for sellers
   - API endpoints: GET /api/user/prefs, POST /api/user/prefs/update

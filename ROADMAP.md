@@ -210,20 +210,26 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 
 ---
 
-### Phase 16: Multi-Language Support (Week 13) [PLANNED]
-**Goal:** Support English and Turkish UI.
+### Phase 16-TR: Full Turkish Localization (Week 12)
+**Status:** ✅ Complete  
+**Goal:** Convert entire application to Turkish as default language.
 
 **Scope:**
-- i18n framework integration (react-i18next)
-- Translation files (en.json, tr.json)
-- Language switcher component
-- Backend locale support for API responses
-- Dynamic content translation
+- Frontend i18n library (`tr.json`, `i18n.ts`)
+- All UI components localized to Turkish
+- Backend i18n helper (`backend/core/i18n.py`)
+- API responses in Turkish
+- Date/time formatting (DD.MM.YYYY HH:mm)
+- Currency formatting (₺ Turkish Lira)
+- Configuration: default language = "tr"
 
 **Success Criteria:**
-- All UI elements translated
-- Language persists across sessions
-- No layout breaks in Turkish
+- ✅ All UI visible text in Turkish
+- ✅ All API success/error messages in Turkish
+- ✅ Default language = Turkish
+- ✅ i18n fallback works if missing key
+- ✅ No broken routes or missing translations
+- ✅ SLA ≤3s maintained
 
 ---
 
@@ -320,14 +326,15 @@ Enable intelligent, automated bidding with AI-driven insights for antique auctio
 | Phase 11 | Week 9 | ✅ Complete |
 | Phase 12 | Week 10 | ✅ Complete |
 | Phase 14 | Week 11 | ✅ Complete |
-| Phase 16-18 | Week 12-14 | 🚧 Planned |
-| Phase 19-20 | Week 18-20 | 📋 Planned |
+| Phase 16-TR | Week 12 | ✅ Complete |
+| Phase 17-18 | Week 13-14 | 🚧 Planned |
 
 ---
 
 ## 📚 Related Documentation
 - `CHANGELOG.md` - All changes by phase
-- `PHASE14_COMPLETE_FULL.md` - User Seller Preferences (Latest)
+- `PHASE16_TR_MODE.md` - Turkish Localization (Latest)
+- `PHASE14_COMPLETE_FULL.md` - User Seller Preferences
 - `PHASE12_COMPLETE.md` - Seller Intelligence Layer
 - `PHASE11_COMPLETE.md` - Dynamic Valuation Feed
 - `PHASE10_COMPLETE.md` - AutoBid Engine

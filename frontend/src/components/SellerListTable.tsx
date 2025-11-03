@@ -1,9 +1,11 @@
 /**
- * Seller List Table Component (Phase 14)
+ * Seller List Table Component (Phase 14 + Phase 16-TR)
+ * Turkish Localization
  */
 import React from 'react';
 import { SellerItem } from '@/api/userPrefs';
 import { TrashIcon } from '@heroicons/react/24/outline';
+import { useTranslation } from '@/lib/i18n';
 
 interface SellerListTableProps {
   listType: 'allowlist' | 'blocklist';
@@ -19,17 +21,18 @@ export function SellerListTable({
   loading = false,
 }: SellerListTableProps) {
   const isEmpty = sellers.length === 0;
+  const { t } = useTranslation();
   
   return (
     <div className="overflow-hidden bg-white shadow sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6">
         <h3 className="text-lg font-medium leading-6 text-gray-900">
-          {listType === 'allowlist' ? 'Allowlist' : 'Blocklist'}
+          {listType === 'allowlist' ? t('seller_preferences.allowlist') : t('seller_preferences.blocklist')}
         </h3>
         <p className="mt-1 max-w-2xl text-sm text-gray-500">
           {listType === 'allowlist'
-            ? 'Sellers you want to bid on. If set, only these sellers are allowed.'
-            : 'Sellers you want to avoid. Always blocked from AutoBid.'}
+            ? t('seller_preferences.allowlist_description')
+            : t('seller_preferences.blocklist_description')}
         </p>
       </div>
       
@@ -37,8 +40,8 @@ export function SellerListTable({
         <div className="border-t border-gray-200 px-4 py-12 text-center">
           <p className="text-sm text-gray-500">
             {listType === 'allowlist'
-              ? 'No sellers in allowlist. All sellers allowed (except blocklisted).'
-              : 'No sellers in blocklist. No restrictions applied.'}
+              ? t('seller_preferences.empty_allowlist')
+              : t('seller_preferences.empty_blocklist')}
           </p>
         </div>
       ) : (
@@ -50,22 +53,22 @@ export function SellerListTable({
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 >
-                  Seller ID
+                  {t('seller_preferences.seller_id')}
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 >
-                  Source
+                  {t('seller_preferences.source')}
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 >
-                  Reason
+                  {t('seller_preferences.reason')}
                 </th>
                 <th scope="col" className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t('seller_preferences.actions')}</span>
                 </th>
               </tr>
             </thead>
@@ -96,7 +99,7 @@ export function SellerListTable({
                       onClick={() => onRemove(seller.seller_id, seller.source)}
                       disabled={loading}
                       className="text-red-600 hover:text-red-900 disabled:opacity-50"
-                      title="Remove"
+                      title={t('seller_preferences.remove_seller')}
                     >
                       <TrashIcon className="h-5 w-5" />
                     </button>
@@ -110,8 +113,7 @@ export function SellerListTable({
       
       <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
         <p className="text-sm text-gray-700">
-          Total: <span className="font-semibold">{sellers.length}</span> seller
-          {sellers.length !== 1 ? 's' : ''}
+          {t('seller_preferences.total')}: <span className="font-semibold">{sellers.length}</span> {sellers.length !== 1 ? t('seller_preferences.sellers') : t('seller_preferences.seller')}
         </p>
       </div>
     </div>
