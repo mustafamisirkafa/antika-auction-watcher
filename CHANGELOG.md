@@ -5,6 +5,14 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- ?? **Phase 11: Dynamic Valuation Feed**
+  - External market data integration (eBay, Etsy, Instagram, Sahibinden)
+  - Data fusion engine with weighted merge algorithm
+  - Redis caching with 10-minute TTL and backoff logic
+  - Real-time valuation updates for AutoBid Engine
+  - API endpoints: live valuation, manual refresh, source list, health status
+  - Fuses internal bid data and external market signals for adaptive pricing
+
 - Phase 10: Realtime AI Bidding Engine (AutoBid)
   - Event bus service (Redis Pub/Sub)
   - Price detector with debouncing
