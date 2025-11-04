@@ -1,188 +1,280 @@
-"""Rate limiting middleware using Redis sliding window."""
-import time
-from typing import Optional, Callable
-from fastapi import Request, Response, HTTPException, status
-from starlette.middleware.base import BaseHTTPMiddleware
-from backend.realtime.redis_manager import RedisManager
-from backend.core.config import settings
+"""
+Rate Limiting Middleware (Sprint 2 - Enhanced)
+Implements per-user and per-IP rate limiting using slowapi.
+"""
+import logging
+from typing import Callable
+from fastapi import Request, Response, HTTPException
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger(__name__)
 
 
-class RateLimiter(BaseHTTPMiddleware):
+def get_user_identifier(request: Request) -> str:
     """
-    Rate limiting middleware with sliding window algorithm.
+    Get unique identifier for rate limiting.
     
-    Features:
-    - Per-user rate limiting
-    - Per-endpoint rate limiting
-    - Configurable time windows
-    - Redis-based distributed limiting
+    Priority:
+    1. User ID (if authenticated)
+    2. IP address (fallback)
+    
+    Args:
+        request: FastAPI request
+    
+    Returns:
+        Unique identifier for rate limiting
     """
-
-    def __init__(self, app, redis_manager: Optional[RedisManager] = None):
-        super().__init__(app)
-        self.redis_manager = redis_manager or RedisManager()
-        self.enabled = settings.rate_limit_enabled
-        
-        # Default rate limits (requests per minute)
-        self.default_limit = 60
-        
-        # Endpoint-specific limits
-        self.endpoint_limits = {
-            '/api/v1/valuations/estimate': 30,
-            '/api/v1/bids/place': 20,
-            '/api/v1/bids/decision': 40,
-            '/api/v1/items': 100
-        }
-
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process request with rate limiting."""
-        if not self.enabled:
-            return await call_next(request)
-        
-        # Skip rate limiting for health checks and admin endpoints
-        if request.url.path in ['/health', '/']:
-            return await call_next(request)
-        
-        # Get user identifier (IP or user ID if authenticated)
-        user_id = await self._get_user_identifier(request)
-        
-        # Get rate limit for this endpoint
-        limit = self._get_rate_limit(request.url.path)
-        
-        # Check rate limit
-        allowed, remaining, reset_time = await self._check_rate_limit(
-            user_id,
-            request.url.path,
-            limit
-        )
-        
-        # Add rate limit headers to response
-        response = None
-        if allowed:
-            response = await call_next(request)
-        else:
-            response = Response(
-                content='Rate limit exceeded. Please try again later.',
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS
-            )
-        
-        # Add headers
-        response.headers['X-RateLimit-Limit'] = str(limit)
-        response.headers['X-RateLimit-Remaining'] = str(remaining)
-        response.headers['X-RateLimit-Reset'] = str(reset_time)
-        
-        if not allowed:
-            retry_after = int(reset_time - time.time())
-            response.headers['Retry-After'] = str(max(retry_after, 1))
-        
-        return response
-
-    async def _get_user_identifier(self, request: Request) -> str:
-        """Get unique identifier for the user."""
-        # Try to get user ID from JWT token
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
-            # In production, decode JWT and get user ID
-            # For now, use the token itself as identifier
-            return f"user:{auth_header}"
-        
-        # Fall back to IP address
-        client_ip = request.client.host if request.client else 'unknown'
+    # Try to get user ID from JWT token
+    if hasattr(request.state, "user_id"):
+        return f"user:{request.state.user_id}"
+    
+    # Fallback to IP address
+    # Check X-Forwarded-For (from reverse proxy)
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
         return f"ip:{client_ip}"
+    
+    # Check X-Real-IP
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return f"ip:{real_ip.strip()}"
+    
+    # Direct connection
+    if request.client:
+        return f"ip:{request.client.host}"
+    
+    return "ip:unknown"
 
-    def _get_rate_limit(self, path: str) -> int:
-        """Get rate limit for endpoint."""
-        # Check for exact match
-        if path in self.endpoint_limits:
-            return self.endpoint_limits[path]
-        
-        # Check for prefix match
-        for endpoint_path, limit in self.endpoint_limits.items():
-            if path.startswith(endpoint_path):
-                return limit
-        
-        return self.default_limit
 
-    async def _check_rate_limit(
-        self,
-        user_id: str,
-        endpoint: str,
-        limit: int,
-        window_seconds: int = 60
-    ) -> tuple[bool, int, int]:
+# Initialize slowapi limiter
+limiter = Limiter(
+    key_func=get_user_identifier,
+    default_limits=["100/minute"],  # Global fallback
+    storage_uri="memory://",         # Use in-memory storage (can switch to Redis)
+    strategy="fixed-window",         # Fixed window strategy
+    headers_enabled=True,            # Include rate limit headers in response
+)
+
+
+# Rate limit decorators for specific endpoints
+
+def rate_limit_login():
+    """
+    Rate limit for login endpoint.
+    5 requests per minute per IP (prevents brute force).
+    """
+    return limiter.limit("5/minute")
+
+
+def rate_limit_bid():
+    """
+    Rate limit for bid endpoints.
+    10 requests per minute per user.
+    """
+    return limiter.limit("10/minute")
+
+
+def rate_limit_valuation():
+    """
+    Rate limit for valuation endpoints.
+    30 requests per minute per user.
+    """
+    return limiter.limit("30/minute")
+
+
+def rate_limit_api():
+    """
+    General API rate limit.
+    100 requests per minute per user.
+    """
+    return limiter.limit("100/minute")
+
+
+def rate_limit_websocket():
+    """
+    Rate limit for WebSocket connections.
+    10 connections per minute per IP.
+    """
+    return limiter.limit("10/minute")
+
+
+# Custom rate limit exceeded handler
+def custom_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
+    """
+    Custom handler for rate limit exceeded.
+    
+    Returns structured JSON error instead of plain text.
+    
+    Args:
+        request: FastAPI request
+        exc: RateLimitExceeded exception
+    
+    Returns:
+        JSON response with error details
+    """
+    from backend.core.i18n import tr_error
+    
+    # Extract rate limit info
+    limit = exc.detail
+    
+    # Get identifier for logging
+    identifier = get_user_identifier(request)
+    
+    logger.warning(
+        f"Rate limit exceeded for {identifier} on {request.url.path}: {limit}"
+    )
+    
+    # Return structured error
+    return Response(
+        content={
+            "status": "error",
+            "error": tr_error("rate_limit_exceeded"),
+            "message": f"Limit a??ld?: {limit}",
+            "retry_after": exc.headers.get("Retry-After", "60"),  # Seconds
+            "limit": limit,
+        },
+        status_code=429,
+        headers={
+            "Retry-After": exc.headers.get("Retry-After", "60"),
+            "X-RateLimit-Limit": str(exc.headers.get("X-RateLimit-Limit", "100")),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(exc.headers.get("X-RateLimit-Reset", "60")),
+        }
+    )
+
+
+class RateLimiter:
+    """
+    Legacy rate limiter class (kept for compatibility).
+    New code should use slowapi decorators.
+    """
+    
+    def __init__(self, redis_client=None):
+        """Initialize rate limiter."""
+        self.redis = redis_client
+        self.enabled = False  # Disabled in favor of slowapi
+        logger.info("Legacy RateLimiter initialized (disabled, using slowapi)")
+    
+    async def check_rate_limit(self, key: str, limit: int, window: int) -> bool:
         """
-        Check rate limit using sliding window algorithm.
+        Check rate limit (legacy method).
         
         Args:
-            user_id: User identifier
-            endpoint: API endpoint
-            limit: Maximum requests allowed
-            window_seconds: Time window in seconds
-            
+            key: Rate limit key
+            limit: Maximum requests
+            window: Time window in seconds
+        
         Returns:
-            Tuple of (allowed, remaining, reset_time)
+            True if within limit
         """
-        try:
-            await self.redis_manager.connect()
-            
-            # Create key for this user and endpoint
-            key = f"rate_limit:{user_id}:{endpoint}"
-            
-            # Get current timestamp
-            now = time.time()
-            window_start = now - window_seconds
-            
-            # Use Redis sorted set for sliding window
-            # Each request is scored by its timestamp
-            
-            # Remove old entries outside the window
-            # (In production, use actual Redis commands)
-            # For now, simulate the logic
-            
-            # Get current count
-            cached_data = await self.redis_manager.cache_get(key)
-            
-            if cached_data is None:
-                # First request
-                current_count = 0
-            else:
-                import json
-                data = json.loads(cached_data)
-                # Filter requests within window
-                requests_in_window = [
-                    ts for ts in data.get('timestamps', [])
-                    if ts > window_start
-                ]
-                current_count = len(requests_in_window)
-            
-            # Check if limit exceeded
-            allowed = current_count < limit
-            remaining = max(0, limit - current_count - 1)
-            
-            if allowed:
-                # Record this request
-                if cached_data is None:
-                    new_data = {'timestamps': [now]}
-                else:
-                    data = json.loads(cached_data)
-                    timestamps = [ts for ts in data.get('timestamps', []) if ts > window_start]
-                    timestamps.append(now)
-                    new_data = {'timestamps': timestamps}
-                
-                import json
-                await self.redis_manager.cache_set(
-                    key,
-                    json.dumps(new_data),
-                    window_seconds
-                )
-            
-            # Calculate reset time
-            reset_time = int(now + window_seconds)
-            
-            await self.redis_manager.disconnect()
-            
-            return allowed, remaining, reset_time
-            
-        except Exception as e:
-            # If Redis fails, allow the request (fail open)
-            return True, limit, int(time.time() + 60)
+        # Delegate to slowapi
+        return True
+
+
+# Configuration for Redis-backed rate limiting (optional)
+
+def get_redis_limiter(redis_url: str):
+    """
+    Create slowapi limiter with Redis backend.
+    
+    Args:
+        redis_url: Redis connection URL (e.g., redis://localhost:6379)
+    
+    Returns:
+        Limiter instance with Redis storage
+    
+    Example:
+        limiter = get_redis_limiter("redis://redis-master:6379/1")
+    
+    Benefits:
+    - Shared state across multiple app instances
+    - Persistent rate limits
+    - Better for production
+    """
+    return Limiter(
+        key_func=get_user_identifier,
+        default_limits=["100/minute"],
+        storage_uri=redis_url,
+        strategy="fixed-window",
+        headers_enabled=True,
+    )
+
+
+# Rate limiting tiers by plan
+
+RATE_LIMITS = {
+    "FREE": {
+        "api": "50/minute",
+        "bid": "5/minute",
+        "valuation": "10/minute",
+        "websocket": "5/minute",
+    },
+    "PRO": {
+        "api": "200/minute",
+        "bid": "20/minute",
+        "valuation": "50/minute",
+        "websocket": "20/minute",
+    },
+    "ENTERPRISE": {
+        "api": "1000/minute",
+        "bid": "100/minute",
+        "valuation": "200/minute",
+        "websocket": "100/minute",
+    },
+}
+
+
+def get_rate_limit_for_plan(plan_code: str, endpoint_type: str) -> str:
+    """
+    Get rate limit string for a specific plan and endpoint type.
+    
+    Args:
+        plan_code: Plan code (FREE, PRO, ENTERPRISE)
+        endpoint_type: Endpoint type (api, bid, valuation, websocket)
+    
+    Returns:
+        Rate limit string (e.g., "100/minute")
+    
+    Example:
+        limit = get_rate_limit_for_plan("PRO", "bid")
+        @limiter.limit(limit)
+        async def place_bid():
+            ...
+    """
+    plan_limits = RATE_LIMITS.get(plan_code, RATE_LIMITS["FREE"])
+    return plan_limits.get(endpoint_type, "100/minute")
+
+
+def dynamic_rate_limit(request: Request) -> str:
+    """
+    Dynamic rate limit based on user's plan.
+    
+    Args:
+        request: FastAPI request
+    
+    Returns:
+        Rate limit string based on user's plan
+    
+    Usage:
+        @limiter.limit(dynamic_rate_limit)
+        async def some_endpoint(request: Request):
+            ...
+    """
+    # Get user's plan from request state (set by auth middleware)
+    plan_code = getattr(request.state, "plan_code", "FREE")
+    
+    # Determine endpoint type from path
+    path = request.url.path
+    if "/bid" in path:
+        endpoint_type = "bid"
+    elif "/valuation" in path:
+        endpoint_type = "valuation"
+    elif "/ws" in path:
+        endpoint_type = "websocket"
+    else:
+        endpoint_type = "api"
+    
+    return get_rate_limit_for_plan(plan_code, endpoint_type)
