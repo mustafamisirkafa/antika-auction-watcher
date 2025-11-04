@@ -9,6 +9,10 @@ from backend.routers import auth, items, valuations, bids, websocket, admin, adv
 from backend.middleware.rate_limiter import RateLimiter
 from backend.middleware.performance import PerformanceMiddleware
 from backend.middleware.graceful_shutdown import init_shutdown_handler
+from backend.core.security import SecurityHeadersMiddleware, get_cors_config
+from backend.middleware.rate_limit import limiter, rate_limit_exceeded_handler
+from backend.core.log_redaction import install_global_redaction_filter
+from slowapi.errors import RateLimitExceeded
 
 # Initialize Redis manager
 redis_manager = RedisManager()
@@ -32,7 +36,11 @@ async def lifespan(app: FastAPI):
     
     # Initialize graceful shutdown handler (Sprint 1)
     shutdown_handler = init_shutdown_handler(app)
-    print("Graceful shutdown handler initialized")
+    print("? Graceful shutdown handler initialized")
+    
+    # Initialize secure logging with redaction (Sprint 2)
+    install_global_redaction_filter()
+    print("? Secure logging with redaction initialized")
     
     yield
     
@@ -49,20 +57,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# Sprint 2: Security headers middleware (HSTS, CSP, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS middleware with secure config (Sprint 2)
+cors_config = get_cors_config()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    **cors_config
 )
 
 # Phase 2: Performance monitoring middleware
 app.add_middleware(PerformanceMiddleware)
 
-# Phase 2: Rate limiting middleware
+# Phase 2: Rate limiting middleware (legacy)
 app.add_middleware(RateLimiter, redis_manager=redis_manager)
+
+# Sprint 2: Enhanced rate limiting with slowapi
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Include routers
 app.include_router(auth.router, prefix=settings.api_prefix)

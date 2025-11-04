@@ -1,5 +1,14 @@
-# Sprint 2: Security & Rate Limiting Dependencies
-cryptography==41.0.7       # Fernet encryption for credentials
-slowapi==0.1.9             # Rate limiting middleware
-limits==3.7.0              # Rate limiting backend
-python-multipart==0.0.6    # Form data parsing (for auth)
+# Security Dependencies (Sprint 2)
+
+# Encryption
+cryptography==41.0.7          # Fernet encryption for credentials
+
+# JWT Authentication
+python-jose[cryptography]==3.3.0  # JWT token generation and verification
+passlib[bcrypt]==1.7.4        # Password hashing with bcrypt
+
+# Rate Limiting
+slowapi==0.1.9                # Rate limiting for FastAPI
+
+# Security Headers & Utilities
+python-multipart==0.0.6       # Form data parsing (for OAuth2)

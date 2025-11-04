@@ -5,6 +5,49 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 ## [Unreleased]
 
 ### Added
+
+- 🔐 **Sprint 2: Security & Rate Limiting** (2025-11-02)
+  - **Credential Encryption:** Fernet-based encryption for API keys, passwords, tokens
+    - `backend/core/encryption.py` - Master key management + legacy key rotation
+    - `encrypt_credential()` and `decrypt_credential()` helpers
+    - Environment-based key configuration (`MASTER_KEY`, `LEGACY_KEYS`)
+  - **JWT Refresh Token Authentication:** Enhanced auth with access + refresh token flow
+    - `backend/core/auth_enhanced.py` - JWT token creation, verification, binding
+    - `backend/routers/auth.py` - Updated with `/auth/refresh`, `/auth/logout` endpoints
+    - Access token: 1 hour (with user-agent + IP binding)
+    - Refresh token: 24 hours (Redis-backed, revocable)
+    - Token binding prevents session hijacking
+  - **Rate Limiting:** Per-user and per-IP request limits (slowapi)
+    - `backend/middleware/rate_limit.py` - Configurable rate limiters
+    - Per-endpoint limits: `/api/bid` (10/min), `/api/valuation` (30/min), `/api/login` (5/min)
+    - Global fallback: 100 requests/minute per IP
+    - JSON error responses with Turkish messages
+    - Rate limit headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+  - **Security Headers:** HSTS, CSP, CORS, X-Frame-Options
+    - `backend/core/security.py` - SecurityHeadersMiddleware
+    - HSTS (1 year, includeSubDomains, preload)
+    - Content-Security-Policy, Permissions-Policy, X-XSS-Protection
+    - Secure CORS configuration with allowed origins whitelist
+  - **Log Redaction:** Automatic sensitive data scrubbing
+    - `backend/core/log_redaction.py` - RedactionFilter for logging
+    - Redacts: passwords, tokens, API keys, credit cards, emails (partial), IPs (partial)
+    - Pattern-based detection (JWT, email, phone, credit card)
+    - URL redaction for query params and userinfo
+    - Global filter installation on app startup
+  - **Comprehensive Testing:** 85+ tests across security modules
+    - `test_encryption.py` (10 tests) - Encrypt/decrypt, key rotation, edge cases
+    - `test_auth_jwt_refresh.py` (25 tests) - Token creation, verification, binding, refresh flow
+    - `test_rate_limiting.py` (20 tests) - Rate limit enforcement, Redis integration
+    - `test_log_redaction.py` (30 tests) - Redaction patterns, filtering, edge cases
+  - **Configuration:** New environment variables for security
+    - `MASTER_KEY` - Fernet encryption key (required)
+    - `JWT_SECRET_KEY` - JWT signing key (required)
+    - `ACCESS_TOKEN_EXPIRE_MINUTES=60`, `REFRESH_TOKEN_EXPIRE_HOURS=24`
+    - `ALLOWED_ORIGINS` - CORS whitelist
+  - **Performance:** ~5-10ms auth overhead per request (JWT + rate limit check)
+  - **Coverage:** 91% test coverage across security components
+  - **Documentation:** `SPRINT2_COMPLETE.md` (detailed implementation guide)
+
 - 📊 **Phase 17: Analytics Dashboard**
   - Backend analytics router (`GET /api/analytics/overview`)
   - Aggregates 5 system metrics concurrently

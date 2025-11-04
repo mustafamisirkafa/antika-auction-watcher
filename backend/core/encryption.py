@@ -1,209 +1,216 @@
 """
-Credential Encryption Service (Sprint 2)
-Uses Fernet (symmetric encryption) to protect sensitive credentials.
+Credential Encryption Module
+
+Provides Fernet-based symmetric encryption for sensitive credentials
+(API keys, passwords, tokens) before storing in database or Redis.
+
+Usage:
+    from backend.core.encryption import encrypt_credential, decrypt_credential
+    
+    encrypted = encrypt_credential("my-secret-api-key")
+    # Store encrypted in DB
+    
+    original = decrypt_credential(encrypted)
+    # Use original for API calls
+
+Environment:
+    MASTER_KEY: Base64-encoded Fernet key (required)
+                Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+Security:
+    - Master key must be rotated periodically (recommendation: every 90 days)
+    - Old keys should be kept for decryption during migration
+    - Keys must never be committed to version control
+    - Use environment variables or secret management systems
 """
+
 import os
-import logging
+import base64
 from typing import Optional
 from cryptography.fernet import Fernet, InvalidToken
-import base64
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
 
-logger = logging.getLogger(__name__)
+
+class EncryptionError(Exception):
+    """Raised when encryption/decryption operations fail"""
+    pass
 
 
-class CredentialEncryption:
+class CredentialEncryptor:
     """
     Handles encryption and decryption of sensitive credentials.
-    Uses Fernet (AES-128-CBC) with a master key from environment.
+    
+    Supports key rotation by maintaining a list of valid keys
+    (current + legacy keys for decryption-only).
     """
     
     def __init__(self, master_key: Optional[str] = None):
         """
-        Initialize encryption service.
+        Initialize encryptor with master key.
         
         Args:
-            master_key: Base64-encoded Fernet key (32 bytes).
-                       If None, reads from MASTER_KEY env var.
+            master_key: Base64-encoded Fernet key. If None, reads from MASTER_KEY env var.
         
         Raises:
-            ValueError: If master key is missing or invalid.
+            EncryptionError: If master key is missing or invalid
         """
-        if master_key is None:
-            master_key = os.getenv("MASTER_KEY")
+        self.master_key = master_key or os.getenv("MASTER_KEY")
         
-        if not master_key:
-            raise ValueError(
-                "MASTER_KEY environment variable is required for encryption. "
-                "Generate one with: python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+        if not self.master_key:
+            raise EncryptionError(
+                "MASTER_KEY environment variable not set. "
+                "Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
             )
         
         try:
-            # Validate and create Fernet cipher
-            self.cipher = Fernet(master_key.encode() if isinstance(master_key, str) else master_key)
-            logger.info("Credential encryption initialized successfully")
+            self.cipher = Fernet(self.master_key.encode() if isinstance(self.master_key, str) else self.master_key)
         except Exception as e:
-            raise ValueError(f"Invalid MASTER_KEY format: {e}")
+            raise EncryptionError(f"Invalid MASTER_KEY format: {e}")
+        
+        # Support for legacy keys (for decryption during rotation)
+        self.legacy_keys = self._load_legacy_keys()
+        if self.legacy_keys:
+            all_ciphers = [self.cipher] + [Fernet(k.encode()) for k in self.legacy_keys]
+            self.multi_cipher = Fernet(all_ciphers[0]._encryption_key)  # Primary for encryption
+            self.legacy_ciphers = all_ciphers[1:]  # Legacy for decryption fallback
+        else:
+            self.multi_cipher = self.cipher
+            self.legacy_ciphers = []
+    
+    def _load_legacy_keys(self) -> list[str]:
+        """
+        Load legacy encryption keys from environment.
+        
+        Expected format: LEGACY_KEYS=key1,key2,key3
+        
+        Returns:
+            List of legacy key strings
+        """
+        legacy = os.getenv("LEGACY_KEYS", "")
+        if not legacy:
+            return []
+        return [k.strip() for k in legacy.split(",") if k.strip()]
     
     def encrypt(self, plaintext: str) -> str:
         """
         Encrypt a plaintext credential.
         
         Args:
-            plaintext: The credential to encrypt (password, token, etc.)
+            plaintext: The credential to encrypt
         
         Returns:
             Base64-encoded encrypted string
         
-        Example:
-            encrypted = encryptor.encrypt("my_secret_password")
-            # Returns: "gAAAAABl..."
+        Raises:
+            EncryptionError: If encryption fails
         """
         if not plaintext:
             return ""
         
         try:
-            encrypted_bytes = self.cipher.encrypt(plaintext.encode('utf-8'))
-            encrypted_str = encrypted_bytes.decode('utf-8')
-            logger.debug("Credential encrypted successfully")
-            return encrypted_str
+            encrypted_bytes = self.multi_cipher.encrypt(plaintext.encode("utf-8"))
+            return encrypted_bytes.decode("utf-8")
         except Exception as e:
-            logger.error(f"Encryption failed: {e}")
-            raise
+            raise EncryptionError(f"Encryption failed: {e}")
     
-    def decrypt(self, encrypted: str) -> str:
+    def decrypt(self, ciphertext: str) -> str:
         """
         Decrypt an encrypted credential.
         
+        Attempts decryption with current key, then falls back to legacy keys.
+        
         Args:
-            encrypted: Base64-encoded encrypted string
+            ciphertext: Base64-encoded encrypted string
         
         Returns:
-            Decrypted plaintext string
+            Original plaintext credential
         
         Raises:
-            InvalidToken: If decryption fails (wrong key or corrupted data)
-        
-        Example:
-            plaintext = encryptor.decrypt("gAAAAABl...")
-            # Returns: "my_secret_password"
+            EncryptionError: If decryption fails with all available keys
         """
-        if not encrypted:
+        if not ciphertext:
             return ""
         
+        # Try current key first
         try:
-            decrypted_bytes = self.cipher.decrypt(encrypted.encode('utf-8'))
-            plaintext = decrypted_bytes.decode('utf-8')
-            logger.debug("Credential decrypted successfully")
-            return plaintext
+            decrypted_bytes = self.multi_cipher.decrypt(ciphertext.encode("utf-8"))
+            return decrypted_bytes.decode("utf-8")
         except InvalidToken:
-            logger.error("Decryption failed: Invalid token or wrong key")
-            raise ValueError("Failed to decrypt credential. Key may have changed.")
-        except Exception as e:
-            logger.error(f"Decryption error: {e}")
-            raise
-    
-    def encrypt_dict(self, data: dict, fields: list[str]) -> dict:
-        """
-        Encrypt specific fields in a dictionary.
-        
-        Args:
-            data: Dictionary containing data
-            fields: List of field names to encrypt
-        
-        Returns:
-            Dictionary with specified fields encrypted
-        
-        Example:
-            user = {"username": "john", "password": "secret123", "email": "john@example.com"}
-            encrypted = encryptor.encrypt_dict(user, ["password"])
-            # Result: {"username": "john", "password": "gAAAAABl...", "email": "john@example.com"}
-        """
-        result = data.copy()
-        for field in fields:
-            if field in result and result[field]:
-                result[field] = self.encrypt(str(result[field]))
-        return result
-    
-    def decrypt_dict(self, data: dict, fields: list[str]) -> dict:
-        """
-        Decrypt specific fields in a dictionary.
-        
-        Args:
-            data: Dictionary containing encrypted data
-            fields: List of field names to decrypt
-        
-        Returns:
-            Dictionary with specified fields decrypted
-        """
-        result = data.copy()
-        for field in fields:
-            if field in result and result[field]:
+            # Fallback to legacy keys
+            for legacy_cipher in self.legacy_ciphers:
                 try:
-                    result[field] = self.decrypt(str(result[field]))
-                except Exception as e:
-                    logger.warning(f"Failed to decrypt field '{field}': {e}")
-                    result[field] = None
-        return result
+                    decrypted_bytes = legacy_cipher.decrypt(ciphertext.encode("utf-8"))
+                    return decrypted_bytes.decode("utf-8")
+                except InvalidToken:
+                    continue
+            
+            # All keys failed
+            raise EncryptionError("Decryption failed: invalid token or corrupted data")
+        except Exception as e:
+            raise EncryptionError(f"Decryption failed: {e}")
     
-    def rotate_key(self, new_master_key: str, encrypted_values: list[str]) -> list[str]:
+    def rotate_key(self, new_master_key: str, re_encrypt_data: callable):
         """
-        Rotate encryption key by re-encrypting existing values.
+        Rotate the master encryption key.
+        
+        Process:
+        1. Set new key as primary
+        2. Add old key to legacy keys
+        3. Re-encrypt all existing credentials with new key
         
         Args:
-            new_master_key: New base64-encoded Fernet key
-            encrypted_values: List of values encrypted with old key
-        
-        Returns:
-            List of values re-encrypted with new key
+            new_master_key: New Fernet key (base64-encoded)
+            re_encrypt_data: Callback function that receives (old_cipher, new_cipher)
+                            and re-encrypts all stored credentials
         
         Example:
-            old_encrypted = ["gAAAAABl...", "gAAAAABm..."]
-            new_encrypted = encryptor.rotate_key(new_key, old_encrypted)
-        
-        Note:
-            1. Decrypt with current key
-            2. Encrypt with new key
-            3. Update database
-            4. Update MASTER_KEY environment variable
+            def migrate_credentials(old_cipher, new_cipher):
+                all_users = db.query(User).all()
+                for user in all_users:
+                    if user.encrypted_api_key:
+                        decrypted = old_cipher.decrypt(user.encrypted_api_key)
+                        user.encrypted_api_key = new_cipher.encrypt(decrypted)
+                db.commit()
+            
+            encryptor.rotate_key(new_key, migrate_credentials)
         """
-        # Create new cipher with new key
+        old_cipher = self.cipher
         new_cipher = Fernet(new_master_key.encode())
         
-        rotated = []
-        for encrypted_value in encrypted_values:
-            try:
-                # Decrypt with old key
-                plaintext = self.decrypt(encrypted_value)
-                # Re-encrypt with new key
-                new_encrypted = new_cipher.encrypt(plaintext.encode('utf-8'))
-                rotated.append(new_encrypted.decode('utf-8'))
-            except Exception as e:
-                logger.error(f"Key rotation failed for value: {e}")
-                raise
-        
-        logger.info(f"Successfully rotated {len(rotated)} encrypted values")
-        return rotated
+        try:
+            # Execute migration callback
+            re_encrypt_data(old_cipher, new_cipher)
+            
+            # Update current key
+            self.master_key = new_master_key
+            self.cipher = new_cipher
+            self.multi_cipher = new_cipher
+            
+            # Add old key to legacy list
+            old_key_str = old_cipher._encryption_key.decode()
+            if old_key_str not in self.legacy_keys:
+                self.legacy_keys.insert(0, old_key_str)
+            
+            print(f"? Key rotation complete. Legacy keys: {len(self.legacy_keys)}")
+        except Exception as e:
+            raise EncryptionError(f"Key rotation failed: {e}")
 
 
-# Global encryption instance
-_encryptor: Optional[CredentialEncryption] = None
+# Global singleton instance
+_encryptor: Optional[CredentialEncryptor] = None
 
 
-def get_encryptor() -> CredentialEncryption:
+def get_encryptor() -> CredentialEncryptor:
     """
-    Get the global credential encryption instance.
+    Get or create the global encryptor instance.
     
     Returns:
-        CredentialEncryption instance
-    
-    Raises:
-        ValueError: If MASTER_KEY is not set
+        CredentialEncryptor singleton
     """
     global _encryptor
-    
     if _encryptor is None:
-        _encryptor = CredentialEncryption()
-    
+        _encryptor = CredentialEncryptor()
     return _encryptor
 
 
@@ -215,54 +222,100 @@ def encrypt_credential(plaintext: str) -> str:
         plaintext: The credential to encrypt
     
     Returns:
-        Encrypted string
+        Encrypted string (base64-encoded)
     """
     return get_encryptor().encrypt(plaintext)
 
 
-def decrypt_credential(encrypted: str) -> str:
+def decrypt_credential(ciphertext: str) -> str:
     """
     Convenience function to decrypt a credential.
     
     Args:
-        encrypted: The encrypted credential
+        ciphertext: Encrypted string
     
     Returns:
-        Decrypted plaintext
+        Original plaintext credential
     """
-    return get_encryptor().decrypt(encrypted)
+    return get_encryptor().decrypt(ciphertext)
 
 
-def generate_master_key() -> str:
+def generate_key() -> str:
     """
-    Generate a new Fernet master key.
+    Generate a new Fernet encryption key.
     
     Returns:
-        Base64-encoded Fernet key (32 bytes)
-    
-    Example:
-        >>> key = generate_master_key()
-        >>> print(key)
-        'xJq7-dZk4vN8mP2wH3jK9sL6fT5bC1aE4gX7yU0hQ8='
+        Base64-encoded key string
     
     Usage:
-        1. Generate key: python -c "from backend.core.encryption import generate_master_key; print(generate_master_key())"
-        2. Add to .env: MASTER_KEY=<generated_key>
-        3. Deploy with environment variable set
+        >>> key = generate_key()
+        >>> print(f"Export this: MASTER_KEY={key}")
     """
-    key = Fernet.generate_key()
-    return key.decode('utf-8')
+    return Fernet.generate_key().decode("utf-8")
 
 
-# Example usage in models:
-"""
-from backend.core.encryption import encrypt_credential, decrypt_credential
+# Password hashing utilities (for user passwords, not for symmetric encryption)
+def derive_key_from_password(password: str, salt: bytes) -> bytes:
+    """
+    Derive an encryption key from a user password using PBKDF2.
+    
+    This is for scenarios where encryption key is derived from user input
+    (e.g., encrypted local backups).
+    
+    Args:
+        password: User-provided password
+        salt: Random salt (min 16 bytes)
+    
+    Returns:
+        32-byte derived key suitable for Fernet
+    """
+    kdf = PBKDF2(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100_000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
-# Before saving to database
-user.encrypted_password = encrypt_credential(plain_password)
-user.instagram_token = encrypt_credential(instagram_token)
 
-# When reading from database
-plain_password = decrypt_credential(user.encrypted_password)
-instagram_token = decrypt_credential(user.instagram_token)
-"""
+if __name__ == "__main__":
+    """
+    CLI utility for key generation and testing.
+    
+    Usage:
+        python -m backend.core.encryption generate
+        python -m backend.core.encryption test
+    """
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Usage: python -m backend.core.encryption [generate|test]")
+        sys.exit(1)
+    
+    command = sys.argv[1]
+    
+    if command == "generate":
+        key = generate_key()
+        print(f"Generated MASTER_KEY:\n{key}")
+        print("\nAdd to .env:")
+        print(f"MASTER_KEY={key}")
+    
+    elif command == "test":
+        if not os.getenv("MASTER_KEY"):
+            print("? MASTER_KEY not set in environment")
+            sys.exit(1)
+        
+        encryptor = get_encryptor()
+        test_data = "my-secret-api-key-12345"
+        
+        encrypted = encryptor.encrypt(test_data)
+        print(f"? Encrypted: {encrypted[:50]}...")
+        
+        decrypted = encryptor.decrypt(encrypted)
+        assert decrypted == test_data, "Decryption mismatch!"
+        print(f"? Decrypted: {decrypted}")
+        print("? Encryption test passed")
+    
+    else:
+        print(f"Unknown command: {command}")
+        sys.exit(1)
