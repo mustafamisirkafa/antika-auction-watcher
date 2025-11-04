@@ -1,0 +1,5 @@
+# Sprint 1: Resilience & Reliability Dependencies
+tenacity==8.2.3          # Retry and circuit breaker library
+pybreaker==1.1.0         # Circuit breaker pattern
+prometheus-client==0.19.0 # Prometheus metrics
+psutil==5.9.6            # System metrics

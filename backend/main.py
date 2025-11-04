@@ -5,9 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import settings
 from backend.db.database import create_db_and_tables
 from backend.realtime.redis_manager import RedisManager
-from backend.routers import auth, items, valuations, bids, websocket, admin, advisor, plans, teams, agents, user_prefs, analytics
+from backend.routers import auth, items, valuations, bids, websocket, admin, advisor, plans, teams, agents, user_prefs, analytics, health
 from backend.middleware.rate_limiter import RateLimiter
 from backend.middleware.performance import PerformanceMiddleware
+from backend.middleware.graceful_shutdown import init_shutdown_handler
 
 # Initialize Redis manager
 redis_manager = RedisManager()
@@ -29,10 +30,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Warning: Failed to seed plans: {e}")
     
+    # Initialize graceful shutdown handler (Sprint 1)
+    shutdown_handler = init_shutdown_handler(app)
+    print("Graceful shutdown handler initialized")
+    
     yield
     
     # Shutdown
+    print("Initiating graceful shutdown...")
+    await shutdown_handler.shutdown()
     await redis_manager.disconnect()
+    print("Shutdown complete")
 
 
 app = FastAPI(
@@ -68,6 +76,7 @@ app.include_router(teams.router, prefix=settings.api_prefix)  # Phase 8
 app.include_router(agents.router, prefix=settings.api_prefix)  # Phase 8
 app.include_router(user_prefs.router)  # Phase 14
 app.include_router(analytics.router)  # Phase 17
+app.include_router(health.router)  # Sprint 1: Health endpoints
 app.include_router(websocket.router)
 
 
