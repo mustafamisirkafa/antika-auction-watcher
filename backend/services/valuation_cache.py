@@ -1,297 +1,378 @@
 """
-Cache Orchestrator (Phase 11).
-Redis-based caching for fused market valuations.
+Sprint 5: Intelligent Valuation Cache Orchestrator
+
+Features:
+- Tiered TTL based on data volatility
+- Lazy refresh mechanism (serve stale + async refresh)
+- Cache prefetching for hot items
+- Prometheus metrics integration
 """
+
 import asyncio
-import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+import time
+from typing import Optional, Dict, Any, List
+from datetime import datetime, timedelta
 import json
+import logging
+
+from redis import Redis
+from prometheus_client import Counter, Histogram, Gauge
 
 logger = logging.getLogger(__name__)
+
+# Tiered TTL configuration (in seconds)
+TTL_CONFIG = {
+    "hot_items": 60,           # 1 min for active auction items
+    "category_stats": 3600,     # 1 hour for category aggregations
+    "seller_profiles": 86400,   # 1 day for seller behavioral data
+    "market_trends": 604800,    # 7 days for market trend data
+}
+
+# Lazy refresh grace period (serve stale data within this window)
+LAZY_REFRESH_GRACE_PERIOD = 300  # 5 minutes
+
+# Prometheus metrics
+cache_hits = Counter('cache_hits_total', 'Total cache hits', ['cache_type'])
+cache_misses = Counter('cache_misses_total', 'Total cache misses', ['cache_type'])
+cache_refreshes = Counter('cache_refreshes_total', 'Total lazy refreshes', ['cache_type'])
+cache_refresh_latency = Histogram(
+    'cache_refresh_latency_seconds',
+    'Cache refresh latency',
+    ['cache_type'],
+    buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
+)
+cache_size = Gauge('cache_size_bytes', 'Approximate cache size', ['cache_type'])
 
 
 class ValuationCache:
     """
-    Cache orchestrator for market valuations.
-    
-    Features:
-    - Redis storage with 10-minute TTL
-    - Real-time refresh with backoff logic
-    - Health status & fallback mechanism
-    - Automatic cache invalidation
+    Intelligent cache orchestrator with tiered TTL and lazy refresh.
     """
     
-    def __init__(self, redis_client, market_feed, valuation_fusion, event_bus):
+    def __init__(self, redis_client: Redis):
         self.redis = redis_client
-        self.market_feed = market_feed
-        self.valuation_fusion = valuation_fusion
-        self.event_bus = event_bus
+        self._refresh_tasks: Dict[str, asyncio.Task] = {}
         
-        # Configuration
-        self.cache_ttl = 600  # 10 minutes
-        self.refresh_backoff_base = 2  # seconds
-        self.refresh_backoff_max = 60  # seconds
-        self.max_refresh_attempts = 3
-        
-        # Health tracking
-        self.refresh_failures: Dict[str, int] = {}
+    def _get_cache_type(self, key: str) -> str:
+        """Determine cache type from key prefix."""
+        if key.startswith("val:item:"):
+            return "hot_items"
+        elif key.startswith("stats:category:"):
+            return "category_stats"
+        elif key.startswith("seller:profile:"):
+            return "seller_profiles"
+        elif key.startswith("market:trend:"):
+            return "market_trends"
+        else:
+            return "hot_items"  # Default
     
-    async def get_cached_valuation(
-        self, item_id: str, category: str
+    def _get_ttl(self, cache_type: str) -> int:
+        """Get TTL for cache type."""
+        return TTL_CONFIG.get(cache_type, 60)
+    
+    async def get(
+        self,
+        key: str,
+        fetch_func: Optional[callable] = None,
+        lazy_refresh: bool = True
     ) -> Optional[Dict[str, Any]]:
         """
-        Get cached valuation or fetch fresh if expired.
+        Get value from cache with optional lazy refresh.
         
         Args:
-            item_id: Item identifier
-            category: Item category
+            key: Cache key
+            fetch_func: Async function to fetch fresh data on miss
+            lazy_refresh: Enable lazy refresh (serve stale + async update)
         
         Returns:
-            Fused metrics or None if unavailable
+            Cached value or None
         """
-        cache_key = f"valuation:cache:{item_id}"
+        cache_type = self._get_cache_type(key)
         
         # Try to get from cache
-        cached_data = await self.redis.get(cache_key)
-        
-        if cached_data:
-            try:
-                metrics = json.loads(cached_data)
-                logger.debug(f"Cache hit for {item_id}")
-                return metrics
-            except json.JSONDecodeError:
-                logger.error(f"Invalid cached data for {item_id}")
-        
-        # Cache miss - fetch fresh data
-        logger.info(f"Cache miss for {item_id} - fetching fresh data")
-        return await self.refresh_valuation(item_id, category)
+        try:
+            cached_data = self.redis.get(key)
+            
+            if cached_data:
+                data = json.loads(cached_data)
+                cache_hits.labels(cache_type=cache_type).inc()
+                
+                # Check if data is stale but within grace period
+                if lazy_refresh and fetch_func:
+                    cached_at = data.get("_cached_at", 0)
+                    age = time.time() - cached_at
+                    ttl = self._get_ttl(cache_type)
+                    
+                    # If data is stale but within grace period, trigger refresh
+                    if age > ttl and age < (ttl + LAZY_REFRESH_GRACE_PERIOD):
+                        logger.info(f"Lazy refresh triggered for key: {key} (age: {age:.1f}s)")
+                        self._trigger_lazy_refresh(key, fetch_func, cache_type)
+                
+                return data
+            
+            else:
+                cache_misses.labels(cache_type=cache_type).inc()
+                
+                # Fetch fresh data if function provided
+                if fetch_func:
+                    data = await self._fetch_and_cache(key, fetch_func, cache_type)
+                    return data
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Cache get error for key {key}: {e}")
+            cache_misses.labels(cache_type=cache_type).inc()
+            return None
     
-    async def refresh_valuation(
-        self, item_id: str, category: str, force: bool = False
+    def _trigger_lazy_refresh(
+        self,
+        key: str,
+        fetch_func: callable,
+        cache_type: str
+    ) -> None:
+        """
+        Trigger async background refresh without blocking.
+        """
+        # Avoid duplicate refresh tasks
+        if key in self._refresh_tasks and not self._refresh_tasks[key].done():
+            return
+        
+        async def refresh_task():
+            try:
+                start = time.time()
+                await self._fetch_and_cache(key, fetch_func, cache_type)
+                latency = time.time() - start
+                
+                cache_refreshes.labels(cache_type=cache_type).inc()
+                cache_refresh_latency.labels(cache_type=cache_type).observe(latency)
+                
+                logger.info(f"Lazy refresh completed for {key} in {latency:.2f}s")
+            except Exception as e:
+                logger.error(f"Lazy refresh failed for {key}: {e}")
+            finally:
+                # Clean up task reference
+                if key in self._refresh_tasks:
+                    del self._refresh_tasks[key]
+        
+        # Create background task
+        task = asyncio.create_task(refresh_task())
+        self._refresh_tasks[key] = task
+    
+    async def _fetch_and_cache(
+        self,
+        key: str,
+        fetch_func: callable,
+        cache_type: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Refresh valuation from market feed + fusion.
-        
-        Args:
-            item_id: Item identifier
-            category: Item category
-            force: Force refresh even if recently failed
-        
-        Returns:
-            Fresh fused metrics or None if failed
+        Fetch fresh data and store in cache.
         """
-        # Check backoff (unless forced)
-        if not force and not await self._check_refresh_allowed(item_id):
-            logger.warning(f"Refresh rate-limited for {item_id}")
+        try:
+            # Fetch fresh data
+            data = await fetch_func()
+            
+            if data is None:
+                return None
+            
+            # Add metadata
+            data["_cached_at"] = time.time()
+            data["_cache_type"] = cache_type
+            
+            # Store with appropriate TTL
+            ttl = self._get_ttl(cache_type)
+            total_ttl = ttl + LAZY_REFRESH_GRACE_PERIOD  # Extended TTL for lazy refresh
+            
+            self.redis.setex(
+                key,
+                total_ttl,
+                json.dumps(data)
+            )
+            
+            logger.debug(f"Cached {key} with TTL {total_ttl}s")
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Fetch and cache error for {key}: {e}")
             return None
+    
+    async def set(
+        self,
+        key: str,
+        value: Dict[str, Any],
+        ttl_override: Optional[int] = None
+    ) -> bool:
+        """
+        Set value in cache with appropriate TTL.
+        """
+        cache_type = self._get_cache_type(key)
         
         try:
-            # Fetch external market data
-            external_feeds = await self.market_feed.fetch_market_data(
-                item_title=item_id,  # TODO: Map item_id to actual title
-                category=category
-            )
+            # Add metadata
+            value["_cached_at"] = time.time()
+            value["_cache_type"] = cache_type
             
-            # Get internal estimate (if available)
-            # TODO: Query ProfitEstimate from database
-            internal_estimate = None
+            # Determine TTL
+            if ttl_override:
+                ttl = ttl_override
+            else:
+                ttl = self._get_ttl(cache_type) + LAZY_REFRESH_GRACE_PERIOD
             
-            # Fuse data
-            fused_metrics = await self.valuation_fusion.fuse_market_data(
-                item_id=item_id,
-                category=category,
-                internal_estimate=internal_estimate,
-                external_feeds=external_feeds
-            )
+            # Store
+            self.redis.setex(key, ttl, json.dumps(value))
             
-            # Cache the result
-            await self._store_in_cache(item_id, fused_metrics)
+            return True
             
-            # Reset failure counter
-            self.refresh_failures[item_id] = 0
-            
-            # Emit cache update event
-            await self.event_bus.publish("valuation.cache_updated", {
-                "item_id": item_id,
-                "metrics": fused_metrics
-            })
-            
-            logger.info(f"Refreshed valuation for {item_id}")
-            
-            return fused_metrics
-        
         except Exception as e:
-            logger.error(f"Error refreshing valuation for {item_id}: {e}")
-            
-            # Track failure
-            self.refresh_failures[item_id] = self.refresh_failures.get(item_id, 0) + 1
-            
-            # Set backoff
-            await self._set_refresh_backoff(item_id)
-            
-            # Try fallback
-            return await self._get_fallback_valuation(item_id)
+            logger.error(f"Cache set error for {key}: {e}")
+            return False
     
-    async def _store_in_cache(self, item_id: str, metrics: Dict[str, Any]):
-        """Store metrics in Redis cache."""
-        cache_key = f"valuation:cache:{item_id}"
-        
-        # Serialize to JSON
-        data = json.dumps(metrics)
-        
-        # Store with TTL
-        await self.redis.setex(cache_key, self.cache_ttl, data)
-        
-        logger.debug(f"Cached valuation for {item_id} (TTL={self.cache_ttl}s)")
+    def delete(self, key: str) -> bool:
+        """Delete key from cache."""
+        try:
+            self.redis.delete(key)
+            return True
+        except Exception as e:
+            logger.error(f"Cache delete error for {key}: {e}")
+            return False
     
-    async def _check_refresh_allowed(self, item_id: str) -> bool:
-        """Check if refresh is allowed (not in backoff)."""
-        backoff_key = f"valuation:backoff:{item_id}"
-        backoff_until = await self.redis.get(backoff_key)
-        
-        if backoff_until:
-            try:
-                backoff_ts = float(backoff_until)
-                now_ts = datetime.utcnow().timestamp()
-                
-                if now_ts < backoff_ts:
-                    return False
-            except (ValueError, TypeError):
-                pass
-        
-        return True
-    
-    async def _set_refresh_backoff(self, item_id: str):
-        """Set refresh backoff based on failure count."""
-        failure_count = self.refresh_failures.get(item_id, 0)
-        
-        # Exponential backoff: base * 2^(failures - 1)
-        backoff_seconds = min(
-            self.refresh_backoff_base * (2 ** (failure_count - 1)),
-            self.refresh_backoff_max
-        )
-        
-        # Calculate backoff expiry
-        backoff_until = datetime.utcnow().timestamp() + backoff_seconds
-        
-        # Store in Redis
-        backoff_key = f"valuation:backoff:{item_id}"
-        await self.redis.setex(
-            backoff_key,
-            int(backoff_seconds) + 1,
-            str(backoff_until)
-        )
-        
-        logger.warning(
-            f"Set refresh backoff for {item_id}: {backoff_seconds}s "
-            f"(failures={failure_count})"
-        )
-    
-    async def _get_fallback_valuation(
-        self, item_id: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_cache_age(self, key: str) -> Optional[float]:
         """
-        Get fallback valuation when refresh fails.
-        
-        Strategy:
-        1. Try stale cache (even if expired)
-        2. Return default metrics
+        Get age of cached data in seconds.
+        Returns None if not cached.
         """
-        # Try stale cache
-        cache_key = f"valuation:cache:{item_id}"
-        cached_data = await self.redis.get(cache_key)
-        
-        if cached_data:
-            try:
-                metrics = json.loads(cached_data)
-                logger.warning(f"Using stale cache for {item_id}")
-                return metrics
-            except json.JSONDecodeError:
-                pass
-        
-        # Return default metrics
-        logger.error(f"No fallback available for {item_id}")
-        return {
-            "market_value": 0.0,
-            "demand_score": 0.5,
-            "trend_delta": 0.0,
-            "confidence": 0.0,
-            "sources": [],
-            "data_points": 0,
-            "fallback": True,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        try:
+            cached_data = self.redis.get(key)
+            if cached_data:
+                data = json.loads(cached_data)
+                cached_at = data.get("_cached_at", 0)
+                return time.time() - cached_at
+            return None
+        except:
+            return None
     
-    async def invalidate_cache(self, item_id: str):
-        """Invalidate cached valuation for item."""
-        cache_key = f"valuation:cache:{item_id}"
-        await self.redis.delete(cache_key)
-        logger.info(f"Invalidated cache for {item_id}")
+    def is_stale(self, key: str) -> bool:
+        """
+        Check if cache entry is stale (beyond normal TTL but within grace period).
+        """
+        age = self.get_cache_age(key)
+        if age is None:
+            return True
+        
+        cache_type = self._get_cache_type(key)
+        ttl = self._get_ttl(cache_type)
+        
+        return age > ttl
     
-    async def get_cache_health(self) -> Dict[str, Any]:
-        """Get cache health statistics."""
-        # Count cached items
-        pattern = "valuation:cache:*"
-        cursor = 0
-        cached_count = 0
-        
-        while True:
-            cursor, keys = await self.redis.scan(
-                cursor, match=pattern, count=100
-            )
-            cached_count += len(keys)
-            
-            if cursor == 0:
-                break
-        
-        # Count items in backoff
-        backoff_pattern = "valuation:backoff:*"
-        cursor = 0
-        backoff_count = 0
-        
-        while True:
-            cursor, keys = await self.redis.scan(
-                cursor, match=backoff_pattern, count=100
-            )
-            backoff_count += len(keys)
-            
-            if cursor == 0:
-                break
-        
-        # Calculate failure rate
-        total_items = len(self.refresh_failures)
-        failed_items = sum(
-            1 for count in self.refresh_failures.values()
-            if count >= self.max_refresh_attempts
-        )
-        
-        failure_rate = failed_items / total_items if total_items > 0 else 0.0
-        
-        return {
-            "cached_items": cached_count,
-            "backoff_items": backoff_count,
-            "total_tracked": total_items,
-            "failed_items": failed_items,
-            "failure_rate": round(failure_rate, 3),
-            "cache_ttl": self.cache_ttl,
-            "status": "healthy" if failure_rate < 0.1 else "degraded"
-        }
+    async def get_hot_items(self, limit: int = 20) -> List[str]:
+        """
+        Get list of hot item IDs from sorted set (by access count).
+        """
+        try:
+            # Sorted set: hot_items (score = access count)
+            hot_items = self.redis.zrevrange("hot_items", 0, limit - 1)
+            return [item.decode() for item in hot_items]
+        except Exception as e:
+            logger.error(f"Error fetching hot items: {e}")
+            return []
     
-    async def cleanup_stale_entries(self):
-        """Clean up stale failure tracking."""
-        # Remove items with no recent activity
-        items_to_remove = []
+    def mark_hot_item(self, item_id: str) -> None:
+        """
+        Increment access count for item (marks as hot).
+        """
+        try:
+            self.redis.zincrby("hot_items", 1, item_id)
+            # Keep only top 100 hot items
+            self.redis.zremrangebyrank("hot_items", 0, -101)
+        except Exception as e:
+            logger.error(f"Error marking hot item {item_id}: {e}")
+    
+    async def prefetch_hot_items(
+        self,
+        fetch_func: callable,
+        limit: int = 20
+    ) -> int:
+        """
+        Prefetch valuations for hot items.
         
-        for item_id in list(self.refresh_failures.keys()):
-            # Check if cache exists
-            cache_key = f"valuation:cache:{item_id}"
-            exists = await self.redis.exists(cache_key)
+        Args:
+            fetch_func: Async function(item_id) to fetch valuation
+            limit: Number of hot items to prefetch
+        
+        Returns:
+            Number of items successfully prefetched
+        """
+        hot_items = await self.get_hot_items(limit)
+        prefetched = 0
+        
+        tasks = []
+        for item_id in hot_items:
+            key = f"val:item:{item_id}"
             
-            if not exists:
-                items_to_remove.append(item_id)
+            # Skip if already cached and fresh
+            age = self.get_cache_age(key)
+            if age is not None and age < 30:  # Skip if cached in last 30s
+                continue
+            
+            # Create prefetch task
+            async def prefetch_task(iid):
+                try:
+                    data = await fetch_func(iid)
+                    if data:
+                        await self.set(f"val:item:{iid}", data)
+                        return True
+                except Exception as e:
+                    logger.error(f"Prefetch failed for {iid}: {e}")
+                return False
+            
+            tasks.append(prefetch_task(item_id))
         
-        for item_id in items_to_remove:
-            del self.refresh_failures[item_id]
+        # Execute prefetch tasks concurrently
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            prefetched = sum(1 for r in results if r is True)
         
-        logger.info(f"Cleaned up {len(items_to_remove)} stale failure entries")
+        logger.info(f"Prefetched {prefetched}/{len(hot_items)} hot items")
+        return prefetched
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics.
+        """
+        try:
+            info = self.redis.info("stats")
+            keyspace = self.redis.info("keyspace")
+            
+            return {
+                "keyspace_hits": info.get("keyspace_hits", 0),
+                "keyspace_misses": info.get("keyspace_misses", 0),
+                "evicted_keys": info.get("evicted_keys", 0),
+                "expired_keys": info.get("expired_keys", 0),
+                "total_keys": sum(
+                    db_info.get("keys", 0)
+                    for db_info in keyspace.values()
+                    if isinstance(db_info, dict)
+                ),
+            }
+        except Exception as e:
+            logger.error(f"Error getting cache stats: {e}")
+            return {}
+
+
+# Global cache instance (initialized by app)
+_cache_instance: Optional[ValuationCache] = None
+
+
+def init_cache(redis_client: Redis) -> ValuationCache:
+    """Initialize global cache instance."""
+    global _cache_instance
+    _cache_instance = ValuationCache(redis_client)
+    return _cache_instance
+
+
+def get_cache() -> ValuationCache:
+    """Get global cache instance."""
+    if _cache_instance is None:
+        raise RuntimeError("Cache not initialized. Call init_cache() first.")
+    return _cache_instance

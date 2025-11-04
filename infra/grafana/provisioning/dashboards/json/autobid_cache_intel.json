@@ -1,0 +1,359 @@
+{
+  "dashboard": {
+    "title": "AutoBid: Cache Intelligence & Optimization",
+    "tags": ["sprint5", "cache", "autobid", "optimization"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cache Hit Ratio",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))",
+            "legendFormat": "Hit Ratio",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 0.7, "color": "yellow"},
+                {"value": 0.85, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Cache Operations Rate",
+        "type": "graph",
+        "gridPos": {"x": 6, "y": 0, "w": 9, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(cache_hits_total[1m])",
+            "legendFormat": "Hits {{cache_type}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(cache_misses_total[1m])",
+            "legendFormat": "Misses {{cache_type}}",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(cache_refreshes_total[1m])",
+            "legendFormat": "Lazy Refreshes {{cache_type}}",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Operations/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Redis Evictions",
+        "type": "stat",
+        "gridPos": {"x": 15, "y": 0, "w": 4, "h": 3},
+        "targets": [
+          {
+            "expr": "redis_evicted_keys_total",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "background",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 1000, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Redis Memory Usage",
+        "type": "stat",
+        "gridPos": {"x": 19, "y": 0, "w": 5, "h": 3},
+        "targets": [
+          {
+            "expr": "redis_memory_used_bytes / redis_memory_max_bytes",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.7, "color": "yellow"},
+                {"value": 0.9, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Cache Refresh Latency",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 6, "w": 12, "h": 7},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(cache_refresh_latency_seconds_bucket[5m]))",
+            "legendFormat": "P50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(cache_refresh_latency_seconds_bucket[5m]))",
+            "legendFormat": "P95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(cache_refresh_latency_seconds_bucket[5m]))",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "s", "label": "Latency"},
+          {"format": "short"}
+        ],
+        "thresholds": [
+          {
+            "value": 1,
+            "colorMode": "warning",
+            "op": "gt",
+            "fill": true,
+            "line": true
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Prefetch Engine Performance",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 6, "w": 12, "h": 7},
+        "targets": [
+          {
+            "expr": "prefetch_items_total",
+            "legendFormat": "Items Prefetched",
+            "refId": "A"
+          },
+          {
+            "expr": "prefetch_candidates_total",
+            "legendFormat": "Candidates Evaluated",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(prefetch_success_total[5m])",
+            "legendFormat": "Success Rate",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Count"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Cache Hit Ratio by Type",
+        "type": "piechart",
+        "gridPos": {"x": 0, "y": 13, "w": 8, "h": 7},
+        "targets": [
+          {
+            "expr": "sum by (cache_type) (rate(cache_hits_total[5m]))",
+            "legendFormat": "{{cache_type}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          },
+          "pieType": "donut"
+        }
+      },
+      {
+        "id": 8,
+        "title": "Adaptive Confidence Adjustments",
+        "type": "graph",
+        "gridPos": {"x": 8, "y": 13, "w": 8, "h": 7},
+        "targets": [
+          {
+            "expr": "avg(bid_confidence_base)",
+            "legendFormat": "Base Confidence",
+            "refId": "A"
+          },
+          {
+            "expr": "avg(bid_confidence_adjusted)",
+            "legendFormat": "Adjusted Confidence",
+            "refId": "B"
+          },
+          {
+            "expr": "avg(bid_confidence_cache_weight)",
+            "legendFormat": "Cache Freshness Weight",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "percentunit", "label": "Confidence", "min": 0, "max": 1},
+          {"format": "short"}
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Hot Items Ranking",
+        "type": "table",
+        "gridPos": {"x": 16, "y": 13, "w": 8, "h": 7},
+        "targets": [
+          {
+            "expr": "topk(10, hot_item_access_count)",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "item_id": "Item ID",
+                "Value": "Access Count"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Cache TTL Distribution",
+        "type": "heatmap",
+        "gridPos": {"x": 0, "y": 20, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(cache_ttl_seconds_bucket[5m])",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "dataFormat": "tsbuckets"
+      },
+      {
+        "id": 11,
+        "title": "Lazy Refresh Effectiveness",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 20, "w": 6, "h": 3},
+        "targets": [
+          {
+            "expr": "(rate(cache_refreshes_total[5m]) / (rate(cache_misses_total[5m]) + 0.001)) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area",
+          "text": {
+            "titleSize": 14,
+            "valueSize": 24
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 40, "color": "yellow"},
+                {"value": 60, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Seller Trust Impact on Confidence",
+        "type": "graph",
+        "gridPos": {"x": 18, "y": 20, "w": 6, "h": 6},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, sum(rate(bid_confidence_seller_trust_bucket[5m])) by (le))",
+            "legendFormat": "Median Trust",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "percentunit", "label": "Trust Score", "min": 0, "max": 1},
+          {"format": "short"}
+        ]
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "cache_type",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(cache_hits_total, cache_type)",
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Prefetch Runs",
+          "datasource": "Loki",
+          "expr": "{job=\"backend\"} |= \"Prefetch round complete\"",
+          "tagKeys": "items",
+          "textFormat": "Prefetched {{items}} items",
+          "iconColor": "blue"
+        }
+      ]
+    },
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+    }
+  },
+  "overwrite": true
+}

@@ -1,345 +1,304 @@
 """
-Bid Policy Service for AutoBid (Phase 10).
-Composes bidding decisions based on rules, budgets, and risk caps.
+Sprint 5: Learning-Based Bid Policy with Adaptive Confidence
+
+Features:
+- Adaptive confidence scoring based on cache freshness
+- Seller trust integration
+- Exponential Moving Average (EMA) smoothing
+- Enhanced audit logging
 """
+
+import math
+import time
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
 import logging
-from typing import Dict, Any, Optional, Literal
-from datetime import datetime
-from sqlmodel import Session, select
 
 logger = logging.getLogger(__name__)
 
+# EMA smoothing parameter (alpha)
+EMA_ALPHA = 0.2
 
-BidMode = Literal["shadow", "auto"]
-DecisionStatus = Literal["ok", "blocked", "skip"]
+# Confidence adjustment parameters
+CACHE_FRESHNESS_DECAY_FACTOR = 30  # Minutes
 
 
-class BidPolicy:
+@dataclass
+class BidDecision:
+    """Bid decision with confidence and reasoning."""
+    ok: bool
+    next_bid: Optional[float]
+    reason: str
+    mode: str
+    confidence: float
+    cache_age: Optional[float] = None
+    adjusted_confidence: Optional[float] = None
+    seller_trust: Optional[float] = None
+    base_confidence: Optional[float] = None
+
+
+class BidPolicyEngine:
     """
-    Bid policy engine for AutoBid.
-    
-    Enforces:
-    - User bidding rules (max bid, min confidence, step)
-    - Budget caps (daily, per-auction)
-    - Stop-loss rules
-    - Risk thresholds
+    Learning-based bid policy engine with adaptive confidence.
     """
     
-    def __init__(self, db: Session, redis_client):
-        self.db = db
-        self.redis = redis_client
-    
-    async def evaluate_bid_decision(
+    def __init__(self):
+        self._confidence_history: Dict[str, float] = {}  # item_id -> EMA confidence
+        
+    def compute_next_bid(
         self,
-        team_id: int,
-        auction_id: str,
+        context: Dict[str, Any],
+        rule: Dict[str, Any],
+        rec_max_bid: float,
+        base_confidence: float,
+        cache_age: Optional[float] = None,
+        seller_trust_score: Optional[float] = None
+    ) -> BidDecision:
+        """
+        Compute next bid with adaptive confidence scoring.
+        
+        Args:
+            context: Current auction context (price, item_id, etc.)
+            rule: User bidding rule (max_bid, min_confidence, step, etc.)
+            rec_max_bid: Recommended max bid from profit advisor
+            base_confidence: Base confidence from valuation model
+            cache_age: Age of cached valuation data (seconds)
+            seller_trust_score: Seller trust score (0-1)
+        
+        Returns:
+            BidDecision with adjusted confidence
+        """
+        current_price = context.get("current_price", 0)
+        item_id = context.get("item_id", "unknown")
+        auction_id = context.get("auction_id", "unknown")
+        
+        # Step 1: Adjust confidence based on cache freshness
+        adjusted_confidence = self._adjust_confidence_for_cache(
+            base_confidence,
+            cache_age
+        )
+        
+        # Step 2: Further adjust for seller trust
+        if seller_trust_score is not None:
+            adjusted_confidence *= seller_trust_score
+        
+        # Step 3: Apply EMA smoothing for stability
+        adjusted_confidence = self._apply_ema_smoothing(
+            item_id,
+            adjusted_confidence
+        )
+        
+        # Step 4: Check confidence threshold
+        min_confidence = rule.get("min_confidence", 0.7)
+        if adjusted_confidence < min_confidence:
+            return BidDecision(
+                ok=False,
+                next_bid=None,
+                reason="confidence_too_low",
+                mode="hold",
+                confidence=adjusted_confidence,
+                cache_age=cache_age,
+                adjusted_confidence=adjusted_confidence,
+                seller_trust=seller_trust_score,
+                base_confidence=base_confidence
+            )
+        
+        # Step 5: Check budget constraints
+        user_max_bid = rule.get("max_bid", float('inf'))
+        if current_price >= user_max_bid:
+            return BidDecision(
+                ok=False,
+                next_bid=None,
+                reason="over_user_max",
+                mode="deny",
+                confidence=adjusted_confidence,
+                cache_age=cache_age,
+                adjusted_confidence=adjusted_confidence,
+                seller_trust=seller_trust_score,
+                base_confidence=base_confidence
+            )
+        
+        if current_price >= rec_max_bid:
+            return BidDecision(
+                ok=False,
+                next_bid=None,
+                reason="over_rec_max",
+                mode="deny",
+                confidence=adjusted_confidence,
+                cache_age=cache_age,
+                adjusted_confidence=adjusted_confidence,
+                seller_trust=seller_trust_score,
+                base_confidence=base_confidence
+            )
+        
+        # Step 6: Compute next bid with step
+        step = rule.get("step", 50)
+        proposed_bid = current_price + step
+        
+        # Ensure proposed bid doesn't exceed limits
+        proposed_bid = min(proposed_bid, user_max_bid, rec_max_bid)
+        
+        # Step 7: Check stop-loss
+        stop_loss_pct = rule.get("stop_loss_pct", 0)
+        if stop_loss_pct > 0:
+            stop_loss_price = rec_max_bid * (1 - stop_loss_pct / 100)
+            if proposed_bid > stop_loss_price:
+                return BidDecision(
+                    ok=False,
+                    next_bid=None,
+                    reason="stop_loss_triggered",
+                    mode="deny",
+                    confidence=adjusted_confidence,
+                    cache_age=cache_age,
+                    adjusted_confidence=adjusted_confidence,
+                    seller_trust=seller_trust_score,
+                    base_confidence=base_confidence
+                )
+        
+        # Step 8: Approve bid
+        mode = rule.get("mode", "auto")
+        
+        return BidDecision(
+            ok=True,
+            next_bid=proposed_bid,
+            reason="approved",
+            mode=mode,
+            confidence=adjusted_confidence,
+            cache_age=cache_age,
+            adjusted_confidence=adjusted_confidence,
+            seller_trust=seller_trust_score,
+            base_confidence=base_confidence
+        )
+    
+    def _adjust_confidence_for_cache(
+        self,
+        base_confidence: float,
+        cache_age: Optional[float]
+    ) -> float:
+        """
+        Adjust confidence based on cache age.
+        
+        Formula: adjusted = base_conf * exp(-staleness_in_minutes / decay_factor)
+        
+        Examples:
+        - Fresh data (0 min): weight = 1.0
+        - 15 min old: weight = 0.61
+        - 30 min old: weight = 0.37
+        - 60 min old: weight = 0.14
+        """
+        if cache_age is None:
+            return base_confidence
+        
+        staleness_minutes = cache_age / 60.0
+        cache_freshness_weight = math.exp(
+            -staleness_minutes / CACHE_FRESHNESS_DECAY_FACTOR
+        )
+        
+        adjusted = base_confidence * cache_freshness_weight
+        
+        logger.debug(
+            f"Cache age: {cache_age:.1f}s ({staleness_minutes:.1f}m), "
+            f"weight: {cache_freshness_weight:.3f}, "
+            f"confidence: {base_confidence:.3f} ? {adjusted:.3f}"
+        )
+        
+        return adjusted
+    
+    def _apply_ema_smoothing(
+        self,
         item_id: str,
-        current_price: float,
-        valuation: Dict[str, Any],
-        user_rules: Optional[Dict[str, Any]] = None,
-        seller_id: Optional[str] = None,
-        source: Optional[str] = None
-    ) -> Dict[str, Any]:
+        current_confidence: float
+    ) -> float:
         """
-        Evaluate whether to place a bid.
+        Apply Exponential Moving Average smoothing.
         
-        Args:
-            team_id: Team ID
-            auction_id: Auction ID
-            item_id: Item/lot ID
-            current_price: Current auction price
-            valuation: Valuation result from ValuationReactor
-            user_rules: User bidding rules (optional)
-            seller_id: Seller identifier (Phase 12, optional)
-            source: Marketplace source (Phase 12, optional)
+        Formula: EMA_t = alpha * current + (1 - alpha) * EMA_{t-1}
         
-        Returns:
-            Decision dict: {
-                "ok": bool,
-                "next_bid": float,
-                "reason": str,
-                "mode": "shadow" | "auto",
-                "blocked_by": str (if blocked),
-                "confidence": float (adjusted by seller trust),
-                "seller_trust": float (if available)
-            }
+        This reduces confidence volatility and prevents over-reaction
+        to single data points.
         """
-        rec_max_bid = valuation.get("rec_max_bid", 0)
-        confidence = valuation.get("confidence", 0)
-        risk_level = valuation.get("risk_level", "high")
+        if item_id not in self._confidence_history:
+            # First observation, no smoothing
+            self._confidence_history[item_id] = current_confidence
+            return current_confidence
         
-        # Phase 12: Adjust confidence based on seller trust score
-        seller_trust = None
-        if seller_id and source:
-            seller_trust = await self._get_seller_trust(seller_id, source)
-            if seller_trust is not None:
-                # Adjust confidence: confidence *= seller_trust
-                confidence = confidence * seller_trust
-                logger.debug(
-                    f"Adjusted confidence by seller trust: "
-                    f"original={valuation.get('confidence', 0):.2f}, "
-                    f"trust={seller_trust:.2f}, "
-                    f"adjusted={confidence:.2f}"
-                )
+        previous_ema = self._confidence_history[item_id]
         
-        # Phase 14: Check user seller preferences (allowlist/blocklist)
-        if seller_id and source:
-            user_id = user_rules.get("user_id") if user_rules else None
-            if user_id:
-                preference_check = await self._check_user_seller_preferences(
-                    user_id, team_id, seller_id, source
-                )
-                if not preference_check["allowed"]:
-                    return {
-                        "ok": False,
-                        "status": "blocked",
-                        "reason": f"Seller blocked by user preference: {preference_check['reason']}",
-                        "blocked_by": "user_preference",
-                        "mode": "shadow"  # Always block in shadow mode
-                    }
-                logger.debug(f"User preference check: {preference_check['reason']}")
+        # Compute EMA
+        ema_confidence = (
+            EMA_ALPHA * current_confidence +
+            (1 - EMA_ALPHA) * previous_ema
+        )
         
-        # Default rules if not provided
-        if user_rules is None:
-            user_rules = await self._get_default_rules(team_id, item_id)
+        # Update history
+        self._confidence_history[item_id] = ema_confidence
         
-        mode = user_rules.get("mode", "shadow")
-        max_bid = user_rules.get("max_bid", rec_max_bid)
-        min_confidence = user_rules.get("min_confidence", 0.6)
-        step = user_rules.get("step", 25)
-        stop_loss_pct = user_rules.get("stop_loss_pct", 0.1)
+        logger.debug(
+            f"EMA smoothing for {item_id}: "
+            f"current={current_confidence:.3f}, "
+            f"previous={previous_ema:.3f}, "
+            f"EMA={ema_confidence:.3f}"
+        )
         
-        # Calculate next bid (current + step)
-        next_bid = self._calculate_next_bid(current_price, step)
-        
-        # === Evaluation checks ===
-        
-        # 1. Check confidence threshold
-        if confidence < min_confidence:
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": f"Confidence {confidence:.2f} < {min_confidence}",
-                "blocked_by": "min_confidence",
-                "mode": mode
-            }
-        
-        # 2. Check max bid limit
-        if next_bid > max_bid:
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": f"Next bid {next_bid} > max {max_bid}",
-                "blocked_by": "max_bid",
-                "mode": mode
-            }
-        
-        # 3. Check recommended max bid
-        if next_bid > rec_max_bid:
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": f"Next bid {next_bid} > AI rec {rec_max_bid}",
-                "blocked_by": "rec_max_bid",
-                "mode": mode
-            }
-        
-        # 4. Check stop-loss
-        if self._check_stop_loss(current_price, rec_max_bid, stop_loss_pct):
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": f"Stop-loss triggered at {stop_loss_pct*100}%",
-                "blocked_by": "stop_loss",
-                "mode": mode
-            }
-        
-        # 5. Check daily budget cap
-        budget_ok, budget_reason = await self._check_budget_cap(team_id, auction_id, next_bid)
-        if not budget_ok:
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": budget_reason,
-                "blocked_by": "budget_cap",
-                "mode": mode
-            }
-        
-        # 6. Check risk level
-        if risk_level == "high" and user_rules.get("allow_high_risk", False) is False:
-            return {
-                "ok": False,
-                "status": "blocked",
-                "reason": f"Risk level {risk_level} not allowed",
-                "blocked_by": "risk_level",
-                "mode": mode
-            }
-        
-        # All checks passed
-        result = {
-            "ok": True,
-            "status": "ok",
-            "next_bid": next_bid,
-            "reason": "All checks passed",
-            "mode": mode,
-            "confidence": confidence,
-            "risk_level": risk_level,
-            "rec_max_bid": rec_max_bid
-        }
-        
-        # Phase 12: Include seller trust if available
-        if seller_trust is not None:
-            result["seller_trust"] = seller_trust
-        
-        return result
+        return ema_confidence
     
-    def _calculate_next_bid(self, current_price: float, step: float) -> float:
-        """Calculate next bid amount."""
-        return round(current_price + step, 2)
+    def reset_confidence_history(self, item_id: Optional[str] = None) -> None:
+        """Reset confidence history for item or all items."""
+        if item_id:
+            self._confidence_history.pop(item_id, None)
+        else:
+            self._confidence_history.clear()
     
-    def _check_stop_loss(
-        self, current_price: float, rec_max_bid: float, stop_loss_pct: float
-    ) -> bool:
-        """Check if stop-loss is triggered."""
-        if rec_max_bid <= 0:
-            return False
-        
-        loss = (current_price - rec_max_bid) / rec_max_bid
-        return loss > stop_loss_pct
+    def get_confidence_history(self, item_id: str) -> Optional[float]:
+        """Get EMA confidence history for item."""
+        return self._confidence_history.get(item_id)
+
+
+# Global policy engine instance
+_policy_engine: Optional[BidPolicyEngine] = None
+
+
+def init_policy_engine() -> BidPolicyEngine:
+    """Initialize global policy engine."""
+    global _policy_engine
+    _policy_engine = BidPolicyEngine()
+    return _policy_engine
+
+
+def get_policy_engine() -> BidPolicyEngine:
+    """Get global policy engine instance."""
+    if _policy_engine is None:
+        raise RuntimeError("Policy engine not initialized. Call init_policy_engine() first.")
+    return _policy_engine
+
+
+# Audit log helper
+def log_bid_decision(
+    decision: BidDecision,
+    auction_id: str,
+    item_id: str,
+    context: Dict[str, Any]
+) -> None:
+    """
+    Log bid decision with enhanced audit trail.
+    """
+    log_entry = {
+        "timestamp": time.time(),
+        "auction_id": auction_id,
+        "item_id": item_id,
+        "decision": decision.ok,
+        "next_bid": decision.next_bid,
+        "reason": decision.reason,
+        "mode": decision.mode,
+        "confidence": decision.confidence,
+        "base_confidence": decision.base_confidence,
+        "adjusted_confidence": decision.adjusted_confidence,
+        "cache_age": decision.cache_age,
+        "seller_trust": decision.seller_trust,
+        "current_price": context.get("current_price"),
+    }
     
-    async def _check_budget_cap(
-        self, team_id: int, auction_id: str, next_bid: float
-    ) -> tuple[bool, str]:
-        """
-        Check budget caps.
-        
-        Returns:
-            (ok, reason)
-        """
-        # Daily budget cap
-        daily_key = f"budget:daily:{team_id}:{datetime.utcnow().date()}"
-        daily_spent = await self.redis.get(daily_key)
-        daily_spent = float(daily_spent) if daily_spent else 0.0
-        
-        # TODO: Get team's daily budget limit from plan/settings
-        daily_limit = 10000.0  # Default 10,000 TL
-        
-        if daily_spent + next_bid > daily_limit:
-            return False, f"Daily budget exceeded ({daily_spent + next_bid:.0f} > {daily_limit:.0f})"
-        
-        # Auction-specific cap
-        auction_key = f"budget:auction:{team_id}:{auction_id}"
-        auction_spent = await self.redis.get(auction_key)
-        auction_spent = float(auction_spent) if auction_spent else 0.0
-        
-        auction_limit = 5000.0  # Default 5,000 TL per auction
-        
-        if auction_spent + next_bid > auction_limit:
-            return False, f"Auction budget exceeded ({auction_spent + next_bid:.0f} > {auction_limit:.0f})"
-        
-        return True, "Budget OK"
+    logger.info(f"BidDecision: {log_entry}")
     
-    async def record_bid(self, team_id: int, auction_id: str, bid_amount: float):
-        """Record bid for budget tracking."""
-        # Update daily budget
-        daily_key = f"budget:daily:{team_id}:{datetime.utcnow().date()}"
-        await self.redis.incrbyfloat(daily_key, bid_amount)
-        await self.redis.expire(daily_key, 86400)  # 24 hours
-        
-        # Update auction budget
-        auction_key = f"budget:auction:{team_id}:{auction_id}"
-        await self.redis.incrbyfloat(auction_key, bid_amount)
-        await self.redis.expire(auction_key, 7200)  # 2 hours
-    
-    async def _get_default_rules(self, team_id: int, item_id: str) -> Dict[str, Any]:
-        """Get default bidding rules."""
-        # TODO: Query BidRule model for team's rules
-        return {
-            "mode": "shadow",
-            "max_bid": 2000.0,
-            "min_confidence": 0.6,
-            "step": 25.0,
-            "stop_loss_pct": 0.1,
-            "allow_high_risk": False
-        }
-    
-    async def _get_seller_trust(self, seller_id: str, source: str) -> Optional[float]:
-        """
-        Get seller trust score from cache (Phase 12).
-        
-        Args:
-            seller_id: Seller identifier
-            source: Marketplace source
-        
-        Returns:
-            Trust score (0-1) or None if not available
-        """
-        import json
-        
-        cache_key = f"seller:profile:{seller_id}:{source}"
-        
-        try:
-            cached_data = await self.redis.get(cache_key)
-            
-            if cached_data:
-                profile = json.loads(cached_data)
-                trust_score = profile.get("trust_score")
-                
-                if trust_score is not None:
-                    return float(trust_score)
-        except Exception as e:
-            logger.warning(f"Error fetching seller trust: {e}")
-        
-        return None
-    
-    async def _check_user_seller_preferences(
-        self, user_id: int, team_id: int, seller_id: str, source: str
-    ) -> Dict[str, Any]:
-        """
-        Check user seller preferences (Phase 14).
-        
-        Args:
-            user_id: User ID
-            team_id: Team ID
-            seller_id: Seller identifier
-            source: Marketplace source
-        
-        Returns:
-            {"allowed": bool, "reason": str}
-        """
-        import json
-        
-        cache_key = f"user_prefs:{user_id}"
-        
-        try:
-            # Try Redis cache first
-            cached_data = await self.redis.get(cache_key)
-            
-            if cached_data:
-                prefs = json.loads(cached_data)
-                allowlist = prefs.get("allowlist", [])
-                blocklist = prefs.get("blocklist", [])
-            else:
-                # Fallback to default (no restrictions)
-                return {"allowed": True, "reason": "No user preferences set"}
-            
-            seller_key = f"{seller_id}:{source}"
-            
-            # Check blocklist first (highest priority)
-            if seller_key in blocklist:
-                return {"allowed": False, "reason": "Seller is in user blocklist"}
-            
-            # If allowlist is empty, allow by default
-            if not allowlist:
-                return {"allowed": True, "reason": "No allowlist restrictions"}
-            
-            # If allowlist exists, check membership
-            if seller_key in allowlist:
-                return {"allowed": True, "reason": "Seller is in user allowlist"}
-            
-            return {"allowed": False, "reason": "Seller not in user allowlist"}
-        
-        except Exception as e:
-            logger.warning(f"Error checking user seller preferences: {e}")
-            # On error, allow by default (fail open)
-            return {"allowed": True, "reason": "Preference check failed (default allow)"}
+    # In production, write to audit table or event bus
+    # audit_service.log_decision(log_entry)
