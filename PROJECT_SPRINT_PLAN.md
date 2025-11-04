@@ -16,7 +16,7 @@
 | Sprint 2 | Security & Rate Limiting | 4 days | ?? Complete |
 | Sprint 3 | Observability & Monitoring | 5 days | ?? Complete |
 | Sprint 4 | Load & Chaos Testing | 5 days | ?? Complete |
-| Sprint 5 | Data & Persistence | 4 days | ?? Planned |
+| Sprint 5 | AutoBid Optimization & Cache Intelligence | 4 days | ? Complete |
 | Sprint 6 | Frontend Optimization | 4 days | ?? Complete |
 | Sprint 7 | Deployment & CI/CD | 5 days | ?? Planned |
 | Sprint 8 | Field Testing & Launch | 7 days | ?? Planned |
@@ -337,7 +337,7 @@
 
 ---
 
-## ?? SPRINT 5 ? Data & Persistence Hardening
+## ?? SPRINT 5 ? AutoBid Optimization & Cache Intelligence
 
 **Duration:** 4 days  
 **Objective:** Strengthen persistence, caching, and query efficiency.
