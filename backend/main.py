@@ -14,6 +14,14 @@ from backend.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from backend.core.log_redaction import install_global_redaction_filter
 from slowapi.errors import RateLimitExceeded
 
+# Sprint 3: Observability
+from backend.core.logging_json import setup_json_logging
+from backend.core.metrics import init_metrics, metrics
+from backend.middleware.observability import ObservabilityMiddleware
+from backend.middleware.tracing import init_tracing, instrument_fastapi
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
 # Initialize Redis manager
 redis_manager = RedisManager()
 
@@ -41,6 +49,23 @@ async def lifespan(app: FastAPI):
     # Initialize secure logging with redaction (Sprint 2)
     install_global_redaction_filter()
     print("? Secure logging with redaction initialized")
+    
+    # Sprint 3: Initialize observability stack
+    setup_json_logging(level="INFO", redact_sensitive=True)
+    print("✅ JSON structured logging initialized")
+    
+    init_metrics(version=settings.api_version, environment="production")
+    print("✅ Prometheus metrics initialized")
+    
+    init_tracing(
+        service_name="antika-auction-watcher",
+        jaeger_host="jaeger",
+        jaeger_port=6831,
+        environment="production",
+        enabled=True
+    )
+    instrument_fastapi(app)
+    print("✅ OpenTelemetry tracing initialized")
     
     yield
     
@@ -77,6 +102,9 @@ app.add_middleware(RateLimiter, redis_manager=redis_manager)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+# Sprint 3: Observability middleware
+app.add_middleware(ObservabilityMiddleware, log_requests=True)
+
 # Include routers
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(items.router, prefix=settings.api_prefix)
@@ -101,6 +129,18 @@ async def root():
         "version": settings.api_version,
         "status": "running"
     }
+
+
+# Sprint 3: Prometheus metrics endpoint (backup, /metrics also in health router)
+@app.get("/metrics")
+async def get_metrics():
+    """
+    Prometheus metrics endpoint.
+    
+    Returns metrics in Prometheus text format.
+    """
+    data = generate_latest(metrics.registry)
+    return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")

@@ -14,7 +14,7 @@
 | Sprint 0 | Setup & Alignment | 3 days | ?? Planned |
 | Sprint 1 | Resilience & Reliability | 5 days | ?? Complete |
 | Sprint 2 | Security & Rate Limiting | 4 days | ?? Complete |
-| Sprint 3 | Observability & Monitoring | 5 days | ?? Planned |
+| Sprint 3 | Observability & Monitoring | 5 days | ?? Complete |
 | Sprint 4 | Load & Chaos Testing | 5 days | ?? Planned |
 | Sprint 5 | Data & Persistence | 4 days | ?? Planned |
 | Sprint 6 | Frontend Optimization | 4 days | ?? Planned |

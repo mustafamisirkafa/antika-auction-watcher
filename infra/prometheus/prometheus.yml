@@ -1,9 +1,12 @@
+# Prometheus Configuration (Sprint 3)
+
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 15s  # Default scrape interval
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  scrape_timeout: 10s
   external_labels:
-    cluster: 'antika-production'
-    environment: 'prod'
+    cluster: 'antika-auction'
+    environment: 'production'
 
 # Alertmanager configuration
 alerting:
@@ -12,60 +15,60 @@ alerting:
         - targets:
             - alertmanager:9093
 
-# Load rules
+# Load alert rules
 rule_files:
-  - 'alerts.yml'
+  - /etc/prometheus/alerts.yml
 
 # Scrape configurations
 scrape_configs:
+  # Backend application metrics
+  - job_name: 'backend'
+    static_configs:
+      - targets:
+          - backend:8000  # FastAPI /metrics endpoint
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
   # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']
-
-  # Backend API metrics
-  - job_name: 'backend_api'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['backend:8000']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'backend-api'
+      - targets:
+          - localhost:9090
 
   # Redis metrics
   - job_name: 'redis'
     static_configs:
-      - targets: ['redis_exporter:9121']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'redis'
+      - targets:
+          - redis-exporter:9121
+    scrape_interval: 15s
 
   # PostgreSQL metrics
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres_exporter:9187']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'postgres'
+      - targets:
+          - postgres-exporter:9187
+    scrape_interval: 15s
 
-  # Nginx metrics
-  - job_name: 'nginx'
+  # Jaeger metrics
+  - job_name: 'jaeger'
     static_configs:
-      - targets: ['nginx:8080']
-    metrics_path: '/nginx_status'
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'nginx'
+      - targets:
+          - jaeger:14269
+    scrape_interval: 30s
 
-  # Docker container metrics (if cadvisor is added)
-  - job_name: 'cadvisor'
+  # Grafana metrics
+  - job_name: 'grafana'
     static_configs:
-      - targets: ['cadvisor:8080']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'docker-host'
+      - targets:
+          - grafana:3000
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Loki metrics
+  - job_name: 'loki'
+    static_configs:
+      - targets:
+          - loki:3100
+    metrics_path: '/metrics'
+    scrape_interval: 30s

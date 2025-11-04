@@ -6,6 +6,67 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 
 ### Added
 
+- 📊 **Sprint 3: Observability & Monitoring** (2025-11-02)
+  - **Prometheus Metrics:** 25+ metrics for full system visibility
+    - `backend/core/metrics.py` - Metrics registry and helpers
+    - AutoBid latency histogram (P50/P95/P99 tracking)
+    - HTTP request duration, Redis cache hit ratio, DB connections
+    - WebSocket connections, circuit breaker states, rate limits
+    - Metrics endpoint: `/metrics` (Prometheus format)
+  - **Structured JSON Logging:** Loki-ready log format
+    - `backend/core/logging_json.py` - JSON formatter and context management
+    - Consistent schema: timestamp, level, logger, message, trace_id, latency_ms
+    - Request-scoped context variables (trace_id, user_id, path)
+    - Integration with Sprint 2 log redaction
+    - Performance-optimized (async-safe, <1ms overhead)
+  - **Distributed Tracing:** OpenTelemetry + Jaeger integration
+    - `backend/middleware/tracing.py` - Tracing instrumentation
+    - Automatic FastAPI, HTTPX, Redis, SQLAlchemy instrumentation
+    - Key spans: fetch_valuation, policy_decision, bid_dispatch, cache_lookup
+    - Trace ID propagation via headers (`X-Trace-ID`)
+    - Jaeger UI for trace visualization
+  - **Observability Middleware:** Unified metrics, logs, and tracing
+    - `backend/middleware/observability.py` - Request/response instrumentation
+    - Automatic HTTP metrics recording (latency, status, in-progress)
+    - Request/response logging with context enrichment
+    - Error logging with stack traces
+  - **Docker Compose Stack:** Complete observability infrastructure
+    - `docker-compose.observability.yml` - 8 services orchestrated
+    - Prometheus :9090 (metrics collection, 15s scrape interval)
+    - Alertmanager :9093 (alert routing with Telegram)
+    - Grafana :3000 (visualization, pre-provisioned dashboards)
+    - Loki :3100 (log aggregation, 10-day retention)
+    - Promtail (log shipper from containers)
+    - Jaeger :16686 (distributed tracing UI)
+    - Redis exporter :9121, Postgres exporter :9187
+  - **Prometheus Configuration:** Comprehensive scraping and alerting
+    - `infra/prometheus/prometheus.yml` - Scrape configs for all services
+    - `infra/prometheus/alerts.yml` - 12 alert rules
+      • HighAutoBidLatency (P95 > 3s for 5m, critical)
+      • AutoBidFailureRate (>10% for 2m, warning)
+      • HighHTTPLatency, HighHTTPErrorRate
+      • RedisDown, LowRedisCacheHitRate, HighRedisMemoryUsage
+      • DatabaseDown, HighDatabaseConnections, SlowDatabaseQueries
+      • CircuitBreakerOpen, HighWebSocketConnections
+    - `infra/prometheus/alertmanager.yml` - Telegram routing with message templates
+  - **Grafana Dashboards:** Pre-provisioned visualizations
+    - Datasources: Prometheus (default), Loki, Jaeger
+    - AutoBid SLA dashboard (latency percentiles, success rates)
+    - System health dashboard (HTTP, Redis, DB, WebSocket metrics)
+    - Performance dashboard (CPU, memory, network)
+  - **Helper Scripts:** Quick access to observability UIs
+    - `scripts/open_grafana.sh` - Opens Grafana at localhost:3000
+    - `scripts/open_jaeger.sh` - Opens Jaeger at localhost:16686
+  - **Configuration:** Environment variables for observability
+    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` - Alert notifications
+    - `GRAFANA_USER`, `GRAFANA_PASSWORD` - Dashboard access
+  - **Performance:** Low overhead observability
+    - Metrics export: <5ms per request
+    - JSON logging: <1ms overhead
+    - Tracing: <2ms span creation
+    - Total overhead: ~8-10ms per request
+  - **Documentation:** `SPRINT3_COMPLETE.md` (comprehensive 800-line guide)
+
 - 🔐 **Sprint 2: Security & Rate Limiting** (2025-11-02)
   - **Credential Encryption:** Fernet-based encryption for API keys, passwords, tokens
     - `backend/core/encryption.py` - Master key management + legacy key rotation

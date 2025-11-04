@@ -1,42 +1,100 @@
+# Prometheus Alert Rules (Sprint 3)
+
 groups:
-  - name: antika_slo_alerts
+  # AutoBid SLA Alerts
+  - name: autobid_sla
     interval: 30s
     rules:
-      # API Latency SLO: p99 should be < 400ms
-      - alert: HighAPILatency
-        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.4
+      - alert: HighAutoBidLatency
+        expr: histogram_quantile(0.95, rate(autobid_latency_seconds_bucket[5m])) > 3.0
+        for: 5m
+        labels:
+          severity: critical
+          component: autobid
+        annotations:
+          summary: "AutoBid P95 latency exceeds SLA"
+          description: "AutoBid P95 latency is {{ $value }}s (threshold: 3.0s). SLA violated for 5 minutes."
+          runbook: "Check AutoBid pipeline performance, Redis latency, and external API calls."
+      
+      - alert: AutoBidFailureRate
+        expr: rate(bids_placed_total{status="failed"}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: autobid
+        annotations:
+          summary: "High AutoBid failure rate"
+          description: "AutoBid failure rate is {{ $value | humanize }}% (threshold: 10%)."
+          runbook: "Check bid dispatch service, auction API connectivity, and error logs."
+  
+  # HTTP Performance Alerts
+  - name: http_performance
+    interval: 30s
+    rules:
+      - alert: HighHTTPLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1.0
         for: 5m
         labels:
           severity: warning
           component: api
         annotations:
-          summary: "High API p99 latency detected"
-          description: "API p99 latency is {{ $value }}s (threshold: 0.4s) for {{ $labels.instance }}"
-
-      # Redis Cache Hit Ratio SLO: should be > 80%
-      - alert: LowRedisCacheHitRatio
-        expr: redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total) < 0.8
-        for: 10m
-        labels:
-          severity: warning
-          component: cache
-        annotations:
-          summary: "Redis cache hit ratio is low"
-          description: "Redis hit ratio is {{ $value | humanizePercentage }} (threshold: 80%) for {{ $labels.instance }}"
-
-      # Critical: API is down
-      - alert: APIDown
-        expr: up{job="backend_api"} == 0
-        for: 1m
+          summary: "High HTTP request latency"
+          description: "HTTP P95 latency is {{ $value }}s (threshold: 1.0s)."
+          runbook: "Check database query performance, Redis latency, and external API calls."
+      
+      - alert: HighHTTPErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) > 0.05
+        for: 2m
         labels:
           severity: critical
           component: api
         annotations:
-          summary: "Backend API is down"
-          description: "Backend API {{ $labels.instance }} has been down for more than 1 minute"
-
-      # Database connection issues
-      - alert: PostgreSQLDown
+          summary: "High HTTP 5xx error rate"
+          description: "HTTP 5xx error rate is {{ $value | humanize }}% (threshold: 5%)."
+          runbook: "Check application logs, database connectivity, and error traces in Jaeger."
+  
+  # Redis Alerts
+  - name: redis_health
+    interval: 30s
+    rules:
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: redis
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been unreachable for 1 minute."
+          runbook: "Check Redis container status, restart if necessary, verify Sentinel failover."
+      
+      - alert: LowRedisCacheHitRate
+        expr: redis_cache_hit_ratio < 0.7
+        for: 10m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "Low Redis cache hit rate"
+          description: "Cache hit ratio is {{ $value | humanizePercentage }} (threshold: 70%)."
+          runbook: "Check cache key expiration policies, increase cache TTL, or add more cache entries."
+      
+      - alert: HighRedisMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: redis
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }} (threshold: 90%)."
+          runbook: "Check memory usage patterns, increase max memory, or implement eviction policies."
+  
+  # Database Alerts
+  - name: database_health
+    interval: 30s
+    rules:
+      - alert: DatabaseDown
         expr: up{job="postgres"} == 0
         for: 1m
         labels:
@@ -44,92 +102,98 @@ groups:
           component: database
         annotations:
           summary: "PostgreSQL is down"
-          description: "PostgreSQL {{ $labels.instance }} has been down for more than 1 minute"
-
-      # Redis down
-      - alert: RedisDown
-        expr: up{job="redis"} == 0
-        for: 1m
-        labels:
-          severity: critical
-          component: cache
-        annotations:
-          summary: "Redis is down"
-          description: "Redis {{ $labels.instance }} has been down for more than 1 minute"
-
-      # High error rate
-      - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+          description: "PostgreSQL has been unreachable for 1 minute."
+          runbook: "Check PostgreSQL container status, verify credentials, check disk space."
+      
+      - alert: HighDatabaseConnections
+        expr: (db_connections_active / 100) > 0.8
         for: 5m
         labels:
           severity: warning
-          component: api
+          component: database
         annotations:
-          summary: "High HTTP 5xx error rate"
-          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
-
-      # Disk space running out
-      - alert: DiskSpaceLow
-        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+          summary: "High database connection usage"
+          description: "Database connections at {{ $value | humanizePercentage }} of max (threshold: 80%)."
+          runbook: "Check for connection leaks, increase max connections, verify PgBouncer pool settings."
+      
+      - alert: SlowDatabaseQueries
+        expr: histogram_quantile(0.95, rate(db_query_duration_seconds_bucket[5m])) > 1.0
         for: 5m
         labels:
           severity: warning
-          component: infrastructure
+          component: database
         annotations:
-          summary: "Disk space is running low"
-          description: "Disk space on {{ $labels.instance }} is below 10% ({{ $value | humanizePercentage }} remaining)"
-
-      # Memory usage high
-      - alert: HighMemoryUsage
-        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
-        for: 5m
+          summary: "Slow database queries detected"
+          description: "Database query P95 latency is {{ $value }}s (threshold: 1.0s)."
+          runbook: "Check slow query log, analyze execution plans, add indexes if needed."
+  
+  # Circuit Breaker Alerts
+  - name: circuit_breakers
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_state{breaker_name=~"ebay|etsy|instagram"} == 1
+        for: 2m
         labels:
           severity: warning
-          component: infrastructure
+          component: external_api
         annotations:
-          summary: "High memory usage"
-          description: "Memory usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}"
-
-      # Too many pending feedback entries (learning loop issue)
-      - alert: FeedbackBacklog
-        expr: advisor_feedback_pending_count > 100
-        for: 30m
-        labels:
-          severity: warning
-          component: learning
-        annotations:
-          summary: "Feedback processing backlog"
-          description: "{{ $value }} feedback entries pending processing for over 30 minutes"
-
-      # Advisor accuracy dropping
-      - alert: AdvisorAccuracyDrop
-        expr: (advisor_accuracy_rate - advisor_accuracy_rate offset 1h) < -0.05
-        for: 15m
-        labels:
-          severity: warning
-          component: advisor
-        annotations:
-          summary: "Advisor accuracy has dropped"
-          description: "Advisor accuracy dropped by {{ $value | humanizePercentage }} in the last hour"
-
-      # WebSocket connection issues
-      - alert: WebSocketConnectionFailures
-        expr: rate(websocket_connection_failures_total[5m]) > 0.1
+          summary: "Circuit breaker open for {{ $labels.breaker_name }}"
+          description: "Circuit breaker {{ $labels.breaker_name }} has been open for 2 minutes."
+          runbook: "Check external API health, verify API keys, review error logs."
+  
+  # WebSocket Alerts
+  - name: websocket_health
+    interval: 30s
+    rules:
+      - alert: HighWebSocketConnections
+        expr: websocket_connections_active > 1000
         for: 5m
         labels:
           severity: warning
           component: websocket
         annotations:
-          summary: "High WebSocket connection failure rate"
-          description: "WebSocket failures: {{ $value }} per second on {{ $labels.instance }}"
-
-      # SSL certificate expiring soon
-      - alert: SSLCertificateExpiringSoon
-        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 7
-        for: 1h
+          summary: "High WebSocket connection count"
+          description: "WebSocket connections: {{ $value }} (threshold: 1000)."
+          runbook: "Check connection cleanup, verify graceful shutdown, monitor memory usage."
+  
+  # Rate Limiting Alerts
+  - name: rate_limiting
+    interval: 30s
+    rules:
+      - alert: HighRateLimitExceeded
+        expr: rate(rate_limit_exceeded_total[5m]) > 10
+        for: 5m
         labels:
           severity: warning
-          component: security
+          component: rate_limiter
         annotations:
-          summary: "SSL certificate expiring soon"
-          description: "SSL certificate expires in {{ $value }} days"
+          summary: "High rate limit exceeded count"
+          description: "Rate limit exceeded {{ $value | humanize }} times/sec (threshold: 10)."
+          runbook: "Check for abuse, adjust rate limits, verify user authentication."
+  
+  # System Resource Alerts
+  - name: system_resources
+    interval: 30s
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanize }}% (threshold: 80%)."
+          runbook: "Check process list, identify CPU-intensive tasks, scale horizontally if needed."
+      
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanize }}% (threshold: 85%)."
+          runbook: "Check memory leaks, restart services if needed, increase system memory."

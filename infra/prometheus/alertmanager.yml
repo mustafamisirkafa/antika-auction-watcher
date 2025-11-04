@@ -1,120 +1,117 @@
+# Alertmanager Configuration (Sprint 3)
+
 global:
   resolve_timeout: 5m
-  smtp_smarthost: 'smtp.gmail.com:587'
-  smtp_from: 'alerts@antika-auction.com'
-  smtp_auth_username: '${SMTP_USERNAME}'
-  smtp_auth_password: '${SMTP_PASSWORD}'
+  # Telegram bot configuration
+  # Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables
 
-# Templates for alerts
-templates:
-  - '/etc/alertmanager/*.tmpl'
-
-# Route tree
 route:
-  receiver: 'default-receiver'
-  group_by: ['alertname', 'cluster', 'service']
+  group_by: ['alertname', 'cluster', 'component']
   group_wait: 10s
   group_interval: 10s
   repeat_interval: 12h
+  receiver: 'telegram-critical'
   
   routes:
-    # Critical alerts - immediate notification
+    # Critical alerts ? Telegram immediately
     - match:
         severity: critical
-      receiver: 'critical-alerts'
-      group_wait: 10s
-      repeat_interval: 5m
+      receiver: 'telegram-critical'
       continue: true
-
-    # Warning alerts - batched notifications
+    
+    # Warning alerts ? Telegram with delay
     - match:
         severity: warning
-      receiver: 'warning-alerts'
-      group_wait: 5m
+      receiver: 'telegram-warnings'
+      group_wait: 30s
+      group_interval: 5m
       repeat_interval: 4h
-
-    # API-specific alerts
+    
+    # Info alerts ? Email only (if configured)
     - match:
-        component: api
-      receiver: 'api-team'
-      continue: true
+        severity: info
+      receiver: 'email'
+      group_interval: 1h
+      repeat_interval: 24h
 
-    # Database alerts
-    - match:
-        component: database
-      receiver: 'database-team'
-      continue: true
-
-    # Learning/AI alerts
-    - match:
-        component: advisor
-      receiver: 'ml-team'
-
-# Inhibition rules (suppress alerts when higher severity is firing)
-inhibit_rules:
-  # If API is down, don't alert on high latency
-  - source_match:
-      alertname: 'APIDown'
-    target_match:
-      alertname: 'HighAPILatency'
-    equal: ['instance']
-
-  # If Redis is down, don't alert on cache hit ratio
-  - source_match:
-      alertname: 'RedisDown'
-    target_match:
-      alertname: 'LowRedisCacheHitRatio'
-    equal: ['instance']
-
-# Receivers
 receivers:
-  - name: 'default-receiver'
+  # Telegram receiver for critical alerts
+  - name: 'telegram-critical'
+    telegram_configs:
+      - bot_token: '${TELEGRAM_BOT_TOKEN}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        api_url: 'https://api.telegram.org'
+        parse_mode: 'HTML'
+        message: |
+          ?? <b>CRITICAL ALERT</b>
+          
+          <b>Alert:</b> {{ .GroupLabels.alertname }}
+          <b>Severity:</b> {{ .CommonLabels.severity }}
+          <b>Component:</b> {{ .CommonLabels.component }}
+          
+          <b>Summary:</b> {{ .CommonAnnotations.summary }}
+          <b>Description:</b> {{ .CommonAnnotations.description }}
+          
+          <b>Runbook:</b> {{ .CommonAnnotations.runbook }}
+          
+          <b>Started:</b> {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+          <b>Environment:</b> {{ .CommonLabels.environment }}
+  
+  # Telegram receiver for warnings
+  - name: 'telegram-warnings'
+    telegram_configs:
+      - bot_token: '${TELEGRAM_BOT_TOKEN}'
+        chat_id: ${TELEGRAM_CHAT_ID}
+        api_url: 'https://api.telegram.org'
+        parse_mode: 'HTML'
+        message: |
+          ?? <b>WARNING</b>
+          
+          <b>Alert:</b> {{ .GroupLabels.alertname }}
+          <b>Component:</b> {{ .CommonLabels.component }}
+          
+          <b>Summary:</b> {{ .CommonAnnotations.summary }}
+          <b>Description:</b> {{ .CommonAnnotations.description }}
+          
+          <b>Started:</b> {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
+  
+  # Email receiver (optional, requires SMTP config)
+  - name: 'email'
     email_configs:
-      - to: 'ops@antika-auction.com'
+      - to: 'ops@antika.auction'
+        from: 'alertmanager@antika.auction'
+        smarthost: 'smtp.gmail.com:587'
+        auth_username: '${SMTP_USER}'
+        auth_password: '${SMTP_PASSWORD}'
         headers:
-          Subject: '[Antika] Alert: {{ .GroupLabels.alertname }}'
+          Subject: '{{ .GroupLabels.alertname }} - {{ .CommonLabels.severity }}'
         html: |
           <h2>Alert: {{ .GroupLabels.alertname }}</h2>
-          <p><strong>Status:</strong> {{ .Status }}</p>
           <p><strong>Severity:</strong> {{ .CommonLabels.severity }}</p>
+          <p><strong>Component:</strong> {{ .CommonLabels.component }}</p>
           <p><strong>Summary:</strong> {{ .CommonAnnotations.summary }}</p>
           <p><strong>Description:</strong> {{ .CommonAnnotations.description }}</p>
-          <p><a href="{{ .ExternalURL }}">View in Alertmanager</a></p>
+          <p><strong>Runbook:</strong> {{ .CommonAnnotations.runbook }}</p>
+          <p><strong>Started:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}</p>
 
-  - name: 'critical-alerts'
-    email_configs:
-      - to: 'oncall@antika-auction.com,cto@antika-auction.com'
-        send_resolved: true
-        headers:
-          Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
-    # Add PagerDuty/Slack/etc here
-    # slack_configs:
-    #   - api_url: '${SLACK_WEBHOOK_URL}'
-    #     channel: '#alerts-critical'
-    #     title: 'CRITICAL: {{ .GroupLabels.alertname }}'
-    #     text: '{{ .CommonAnnotations.description }}'
-
-  - name: 'warning-alerts'
-    email_configs:
-      - to: 'devops@antika-auction.com'
-        send_resolved: true
-        headers:
-          Subject: '[Warning] {{ .GroupLabels.alertname }}'
-
-  - name: 'api-team'
-    email_configs:
-      - to: 'api-team@antika-auction.com'
-        headers:
-          Subject: '[API] {{ .GroupLabels.alertname }}'
-
-  - name: 'database-team'
-    email_configs:
-      - to: 'dba@antika-auction.com'
-        headers:
-          Subject: '[Database] {{ .GroupLabels.alertname }}'
-
-  - name: 'ml-team'
-    email_configs:
-      - to: 'ml-team@antika-auction.com'
-        headers:
-          Subject: '[Advisor/ML] {{ .GroupLabels.alertname }}'
+inhibit_rules:
+  # Inhibit warning if critical alert is firing for same component
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'component']
+  
+  # Inhibit redis warnings if redis is down
+  - source_match:
+      alertname: 'RedisDown'
+    target_match_re:
+      alertname: 'LowRedisCacheHitRate|HighRedisMemoryUsage'
+    equal: ['component']
+  
+  # Inhibit database warnings if database is down
+  - source_match:
+      alertname: 'DatabaseDown'
+    target_match_re:
+      alertname: 'HighDatabaseConnections|SlowDatabaseQueries'
+    equal: ['component']

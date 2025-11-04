@@ -1,39 +1,36 @@
+# Grafana Datasources Provisioning (Sprint 3)
+
 apiVersion: 1
 
 datasources:
+  # Prometheus datasource
   - name: Prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: false
+    editable: true
     jsonData:
-      timeInterval: "15s"
-      queryTimeout: "60s"
+      timeInterval: 15s
       httpMethod: POST
-
+  
+  # Loki datasource
   - name: Loki
     type: loki
     access: proxy
     url: http://loki:3100
-    editable: false
+    editable: true
     jsonData:
       maxLines: 1000
       derivedFields:
-        - datasourceUid: Prometheus
-          matcherRegex: "traceID=(\\w+)"
+        - datasourceUid: tempo
+          matcherRegex: "trace_id=(\\w+)"
           name: TraceID
           url: "$${__value.raw}"
-
-  - name: Redis
-    type: redis-datasource
+  
+  # Jaeger datasource
+  - name: Jaeger
+    type: jaeger
     access: proxy
-    url: redis://redis:6379
-    editable: false
-    secureJsonData:
-      password: ${REDIS_PASSWORD}
-    jsonData:
-      client: standalone
-      poolSize: 5
-      timeout: 10
-      pingInterval: 0
+    url: http://jaeger:16686
+    editable: true
