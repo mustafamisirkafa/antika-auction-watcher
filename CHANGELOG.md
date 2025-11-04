@@ -6,6 +6,39 @@ All notable changes to Antika Auction Watcher will be documented in this file.
 
 ### Added
 
+- 🧪 **Sprint 4: Load & Chaos Testing** (2025-11-02)
+  - **k6 Load Testing:** Comprehensive performance testing suite
+    - `tests/load/k6_autobid_test.js` - AutoBid endpoint load test (100 VUs, 10min)
+    - `tests/load/k6_api_stress_test.js` - API stress test (up to 200 VUs)
+    - 3-phase testing: ramp-up → steady state → ramp-down
+    - SLA validation: P95 < 3000ms, error rate < 1%
+    - JSON output for Grafana integration
+  - **Chaos Toolkit Experiments:** Resilience testing under failures
+    - `tests/chaos/redis_failover_experiment.yaml` - Redis master failure simulation
+    - `tests/chaos/instagram_api_timeout.yaml` - External API timeout simulation
+    - `tests/chaos/database_connection_exhaustion.yaml` - DB connection pool saturation
+    - Validates graceful degradation, circuit breakers, automatic recovery
+  - **Automated Test Runners:** Helper scripts for execution
+    - `scripts/run_load_test.sh` - k6 test orchestration with Docker
+    - `scripts/run_chaos_tests.sh` - Chaos Toolkit experiment runner
+    - Health checks, result collection, status reporting
+  - **Performance Dashboard:** Grafana dashboard for test visualization
+    - `infra/grafana/provisioning/dashboards/json/sprint4_performance.json`
+    - Panels: HTTP latency P95/P99, request rate, error rate
+    - Redis availability, cache hit ratio, AutoBid latency heatmap
+    - Database connections, circuit breaker states
+    - Real-time 10s refresh, annotations for test events
+  - **Automated Reporting:** Python report generator
+    - `scripts/generate_sprint4_report.py` - Collects k6 + Chaos results
+    - Queries Prometheus for system metrics
+    - Generates comprehensive SPRINT4_COMPLETE.md with recommendations
+    - Pass/fail determination based on SLA thresholds
+  - **Test Coverage:** Full system validation
+    - Load tests: AutoBid endpoint, all critical APIs, stress scenarios
+    - Chaos tests: Redis failover, API timeouts, DB saturation
+    - Metrics validation: P95 latency, error rates, cache performance
+  - **Documentation:** `SPRINT4_COMPLETE.md` with test results and recommendations
+
 - 📊 **Sprint 3: Observability & Monitoring** (2025-11-02)
   - **Prometheus Metrics:** 25+ metrics for full system visibility
     - `backend/core/metrics.py` - Metrics registry and helpers

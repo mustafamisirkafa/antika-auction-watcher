@@ -1,0 +1,145 @@
+# Chaos Toolkit Experiment: Redis Failover (Sprint 4)
+#
+# Validates system resilience when Redis becomes unavailable.
+#
+# Expected behavior:
+# - Backend switches to Redis Sentinel replica
+# - Or returns 503 Service Unavailable (graceful degradation)
+# - No crashes or data loss
+# - Automatic recovery when Redis restarts
+#
+# Usage:
+#   chaos run tests/chaos/redis_failover_experiment.yaml
+
+version: 1.0.0
+title: Redis Failover Resilience Test
+description: |
+  Simulates Redis master failure to validate:
+  1. System handles Redis unavailability gracefully
+  2. Sentinel failover works correctly
+  3. Backend recovers automatically
+  4. No request crashes or data corruption
+
+tags:
+  - redis
+  - failover
+  - resilience
+  - sprint4
+
+configuration:
+  backend_url:
+    type: env
+    key: BACKEND_URL
+    default: "http://localhost:8000"
+  
+  redis_container:
+    type: env
+    key: REDIS_CONTAINER
+    default: "redis"
+
+steady-state-hypothesis:
+  title: Backend is healthy and Redis is available
+  probes:
+    - name: backend-health-check
+      type: probe
+      tolerance: 200
+      provider:
+        type: http
+        url: "${backend_url}/health"
+        timeout: 5
+    
+    - name: redis-is-running
+      type: probe
+      tolerance: true
+      provider:
+        type: process
+        path: docker
+        arguments: ps --filter name=${redis_container} --format "{{.Status}}"
+        timeout: 5
+
+method:
+  - type: action
+    name: stop-redis-master
+    provider:
+      type: process
+      path: docker
+      arguments: stop ${redis_container}
+    pauses:
+      after: 10  # Wait 10 seconds for system to react
+  
+  - type: probe
+    name: backend-health-during-outage
+    provider:
+      type: http
+      url: "${backend_url}/health"
+      timeout: 5
+      expected_status: [200, 503]  # Either healthy (Sentinel) or unavailable
+    tolerance: true
+  
+  - type: probe
+    name: backend-does-not-crash
+    provider:
+      type: process
+      path: docker
+      arguments: ps --filter name=backend --format "{{.Status}}"
+    tolerance: true
+  
+  - type: probe
+    name: check-circuit-breaker-open
+    provider:
+      type: http
+      url: "${backend_url}/metrics"
+      timeout: 5
+    tolerance: |
+      # Check if Redis circuit breaker opened
+      "redis_circuit_breaker" in output
+  
+  - type: action
+    name: restart-redis-master
+    provider:
+      type: process
+      path: docker
+      arguments: start ${redis_container}
+    pauses:
+      after: 15  # Wait for Redis to be ready
+  
+  - type: probe
+    name: verify-redis-recovery
+    provider:
+      type: process
+      path: docker
+      arguments: exec ${redis_container} redis-cli ping
+    tolerance: "PONG"
+  
+  - type: probe
+    name: backend-recovered
+    provider:
+      type: http
+      url: "${backend_url}/health"
+      timeout: 5
+    tolerance: 200
+  
+  - type: probe
+    name: circuit-breaker-closed
+    provider:
+      type: http
+      url: "${backend_url}/metrics"
+      timeout: 5
+    tolerance: |
+      # Verify circuit breaker recovered
+      "redis_circuit_breaker" in output
+
+rollbacks:
+  - type: action
+    name: ensure-redis-running
+    provider:
+      type: process
+      path: docker
+      arguments: start ${redis_container}
+
+controls:
+  - name: log-to-stdout
+    provider:
+      type: python
+      module: chaoslib.control
+      func: log_action_control

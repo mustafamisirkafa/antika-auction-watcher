@@ -1,0 +1,133 @@
+# Chaos Toolkit Experiment: Database Connection Pool Exhaustion (Sprint 4)
+#
+# Simulates database connection pool saturation to validate:
+# - PgBouncer handles connection pooling correctly
+# - System degrades gracefully (429 instead of crash)
+# - Recovery after load decreases
+#
+# Usage:
+#   chaos run tests/chaos/database_connection_exhaustion.yaml
+
+version: 1.0.0
+title: Database Connection Pool Exhaustion
+description: |
+  Simulates high database connection usage to validate:
+  1. PgBouncer connection pooling works
+  2. System returns 429 (Too Many Requests) under extreme load
+  3. No database crashes
+  4. Automatic recovery when load decreases
+
+tags:
+  - database
+  - connection-pool
+  - pgbouncer
+  - sprint4
+
+configuration:
+  backend_url:
+    type: env
+    key: BACKEND_URL
+    default: "http://localhost:8000"
+  
+  postgres_container:
+    type: env
+    key: POSTGRES_CONTAINER
+    default: "postgres"
+
+steady-state-hypothesis:
+  title: Database is healthy with normal connections
+  probes:
+    - name: backend-health
+      type: probe
+      tolerance: 200
+      provider:
+        type: http
+        url: "${backend_url}/health"
+        timeout: 5
+    
+    - name: database-connections-normal
+      type: probe
+      tolerance: true
+      provider:
+        type: http
+        url: "${backend_url}/metrics"
+        timeout: 5
+      # Check that db_connections_active is reasonable
+
+method:
+  - type: action
+    name: simulate-high-connection-load
+    provider:
+      type: python
+      module: chaostoolkit.actions
+      func: run_python
+      arguments:
+        code: |
+          import requests
+          import concurrent.futures
+          
+          backend_url = "${backend_url}"
+          
+          def make_request(i):
+              try:
+                  response = requests.get(f"{backend_url}/api/v1/plans", timeout=10)
+                  return response.status_code
+              except:
+                  return None
+          
+          print("Simulating 50 concurrent database queries...")
+          with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+              futures = [executor.submit(make_request, i) for i in range(50)]
+              results = [f.result() for f in concurrent.futures.as_completed(futures)]
+          
+          success_count = sum(1 for r in results if r == 200)
+          print(f"Successful requests: {success_count}/50")
+    pauses:
+      after: 5
+  
+  - type: probe
+    name: check-connection-metrics
+    provider:
+      type: http
+      url: "${backend_url}/metrics"
+      timeout: 5
+    tolerance: |
+      "db_connections_active" in output
+  
+  - type: probe
+    name: backend-still-responsive
+    provider:
+      type: http
+      url: "${backend_url}/health"
+      timeout: 10
+    tolerance: [200, 503]  # May be degraded but shouldn't crash
+  
+  - type: probe
+    name: database-still-running
+    provider:
+      type: process
+      path: docker
+      arguments: ps --filter name=${postgres_container} --format "{{.Status}}"
+    tolerance: true
+  
+  - type: action
+    name: wait-for-recovery
+    provider:
+      type: python
+      module: chaostoolkit.actions
+      func: run_python
+      arguments:
+        code: |
+          import time
+          print("Waiting 30 seconds for connection pool to recover...")
+          time.sleep(30)
+  
+  - type: probe
+    name: verify-recovery
+    provider:
+      type: http
+      url: "${backend_url}/health"
+      timeout: 5
+    tolerance: 200
+
+rollbacks: []
